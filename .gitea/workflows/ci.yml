@@ -1,0 +1,115 @@
+name: Build and Upload IPK Packages
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-x86_64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Install OpenWrt SDK and Dependencies (x86_64)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget xz-utils
+          wget https://downloads.openwrt.org/releases/22.03.0/targets/x86/64/openwrt-sdk-22.03.0-x86-64_gcc-11.2.0_musl.Linux-x86_64.tar.xz
+          tar -xf openwrt-sdk-22.03.0-x86-64_gcc-11.2.0_musl.Linux-x86_64.tar.xz
+          mv openwrt-sdk-22.03.0-x86-64_gcc-11.2.0_musl.Linux-x86_64 openwrt-sdk
+
+      - name: Set Up Rust (x86_64)
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-unknown-linux-musl
+
+      - name: Build IPK Package (x86_64)
+        run: |
+          cd openwrt-sdk
+          make package/feeds/packages/bmcbl-api/compile V=s
+          mkdir -p ../output/x86_64
+          cp bin/packages/x86_64/bmcbl-api/*.ipk ../output/x86_64/ua4f_1.0.0_x86_64.ipk
+
+      - name: Upload IPK Artifact (x86_64)
+        uses: actions/upload-artifact@v3
+        with:
+          name: ua4f
+          path: output/x86_64/ua4f_1.0.0_x86_64.ipk
+          retention-days: 1
+          compression-level: 9
+
+  build-armv7:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Install OpenWrt SDK and Dependencies (armv7)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget xz-utils
+          wget https://downloads.openwrt.org/releases/22.03.0/targets/arm_cortex-a7/neon-vfpv4/openwrt-sdk-22.03.0-arm_cortex-a7_neon-vfpv4_gcc-11.2.0_musl_eabi.Linux-x86_64.tar.xz
+          tar -xf openwrt-sdk-22.03.0-arm_cortex-a7_neon-vfpv4_gcc-11.2.0_musl_eabi.Linux-x86_64.tar.xz
+          mv openwrt-sdk-22.03.0-arm_cortex-a7_neon-vfpv4_gcc-11.2.0_musl_eabi openwrt-sdk
+
+      - name: Set Up Rust (armv7)
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: armv7-unknown-linux-musleabihf
+
+      - name: Build IPK Package (armv7)
+        run: |
+          cd openwrt-sdk
+          make package/feeds/packages/bmcbl-api/compile V=s
+          mkdir -p ../output/armv7
+          cp bin/packages/arm_cortex-a7_neon-vfpv4/bmcbl-api/*.ipk ../output/armv7/ua4f_1.0.0_armv7.ipk
+
+      - name: Upload IPK Artifact (armv7)
+        uses: actions/upload-artifact@v3
+        with:
+          name: ua4f
+          path: output/armv7/ua4f_1.0.0_armv7.ipk
+          retention-days: 1
+          compression-level: 9
+
+  build-aarch64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Install OpenWrt SDK and Dependencies (aarch64)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget xz-utils
+          wget https://downloads.openwrt.org/releases/22.03.0/targets/aarch64_generic/openwrt-sdk-22.03.0-aarch64_generic_gcc-11.2.0_musl.Linux-x86_64.tar.xz
+          tar -xf openwrt-sdk-22.03.0-aarch64_generic_gcc-11.2.0_musl.Linux-x86_64.tar.xz
+          mv openwrt-sdk-22.03.0-aarch64_generic_gcc-11.2.0_musl.Linux-x86_64 openwrt-sdk
+
+      - name: Set Up Rust (aarch64)
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-unknown-linux-musl
+
+      - name: Build IPK Package (aarch64)
+        run: |
+          cd openwrt-sdk
+          make package/feeds/packages/bmcbl-api/compile V=s
+          mkdir -p ../output/aarch64
+          cp bin/packages/aarch64_generic/bmcbl-api/*.ipk ../output/aarch64/ua4f_1.0.0_aarch64.ipk
+
+      - name: Upload IPK Artifact (aarch64)
+        uses: actions/upload-artifact@v3
+        with:
+          name: ua4f
+          path: output/aarch64/ua4f_1.0.0_aarch64.ipk
+          retention-days: 1
+          compression-level: 9
