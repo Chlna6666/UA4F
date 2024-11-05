@@ -48,37 +48,48 @@ static mut USERAGENT: Option<String> = None;
 
 #[tokio::main]
 async fn start_server(args: Args) {
+    // 初始化日志
     utils::init_logger(args.log_level, args.no_file_log);
     info!("UA4F started");
     info!("Author: {}", env!("CARGO_PKG_AUTHORS"));
     info!("Version: {}", env!("CARGO_PKG_VERSION"));
     info!("Listening on {}:{}", args.bind, args.port);
 
+    // 设置全局的用户代理（USERAGENT变量）
     unsafe {
         USERAGENT = Some(args.user_agent);
     }
 
-    let listener = TcpListener::bind(format!("{}:{}", args.bind, args.port)).await;
-    let listener = match listener {
+    // 绑定监听地址和端口
+    let listener = match TcpListener::bind(format!("{}:{}", args.bind, args.port)).await {
         Ok(listener) => listener,
         Err(err) => {
-            error!("bind error: {}", err);
+            error!("Failed to bind to {}:{}. Error: {}", args.bind, args.port, err);
             return;
         }
     };
-    let auth: Arc<_> = Arc::new(NoAuth);
 
+    let auth = Arc::new(NoAuth);
     let server = socks5_server::Server::new(listener, auth);
 
-    while let Ok((conn, _)) = server.accept().await {
-        tokio::spawn(async move {
-            match handler(conn).await {
-                Ok(()) => {}
-                Err(err) => error!("handle err: {err}"),
+    // 接受连接并使用 tokio::spawn 启动新的任务处理每个连接
+    loop {
+        match server.accept().await {
+            Ok((conn, _)) => {
+                tokio::spawn(async move {
+                    if let Err(err) = handler(conn).await {
+                        error!("Connection handling error: {}", err);
+                    }
+                });
             }
-        });
+            Err(err) => {
+                error!("Failed to accept connection: {}", err);
+                // 可以考虑是否在这里加入断开重试逻辑
+            }
+        }
     }
 }
+
 
 async fn handler(conn: IncomingConnection<(), NeedAuthenticate>) -> Result<(), Error> {
     let conn = match conn.authenticate().await {
@@ -90,9 +101,9 @@ async fn handler(conn: IncomingConnection<(), NeedAuthenticate>) -> Result<(), E
     };
 
     match conn.wait().await {
-        // we don't support associate and bind command
+        // 单独处理 Associate 和 Bind 命令，避免类型不匹配的问题
         Ok(Command::Associate(associate, _)) => {
-            warn!("received associate command, reject");
+            warn!("received associate command, rejecting");
             let replied = associate
                 .reply(Reply::CommandNotSupported, Address::unspecified())
                 .await;
@@ -108,7 +119,7 @@ async fn handler(conn: IncomingConnection<(), NeedAuthenticate>) -> Result<(), E
             let _ = conn.close().await;
         }
         Ok(Command::Bind(bind, _)) => {
-            warn!("received bind command, reject");
+            warn!("received bind command, rejecting");
             let replied = bind
                 .reply(Reply::CommandNotSupported, Address::unspecified())
                 .await;
@@ -123,8 +134,8 @@ async fn handler(conn: IncomingConnection<(), NeedAuthenticate>) -> Result<(), E
 
             let _ = conn.close().await;
         }
-
         Ok(Command::Connect(connect, addr)) => {
+            // 原有 Connect 命令处理逻辑保持不变
             let target = match addr {
                 Address::DomainAddress(domain, port) => {
                     let domain = String::from_utf8_lossy(&domain);
@@ -220,7 +231,6 @@ async fn handler(conn: IncomingConnection<(), NeedAuthenticate>) -> Result<(), E
                 }
             }
         }
-
         Err((err, mut conn)) => {
             let _ = conn.shutdown().await;
             return Err(err);
