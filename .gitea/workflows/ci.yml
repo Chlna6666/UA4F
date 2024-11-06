@@ -1,4 +1,4 @@
-name: Build IPK
+name: 构建 IPK 包
 
 on:
   push:
@@ -9,8 +9,10 @@ on:
       - master
 
 jobs:
+
   build:
     runs-on: ubuntu-latest
+
     strategy:
       matrix:
         arch:
@@ -19,68 +21,63 @@ jobs:
           - { name: armv7, target: armv7-unknown-linux-musleabihf, sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/mediatek/mt7629/openwrt-sdk-23.05.0-mt7629.tar.xz" }
 
     steps:
-      - name: Checkout Source
+      - name: 检出源代码
         uses: actions/checkout@v4
 
-      - name: Extract Version from Cargo.toml
+      - name: 从 Cargo.toml 中提取版本号
         id: extract_version
         run: |
           version=$(grep '^version' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
-          echo "version=$version" >> $GITHUB_ENV
+          echo "version=$version" >> $GITHUB_OUTPUT
 
-      - name: Install Rust Toolchain
+      - name: 安装 Rust 工具链
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
           profile: minimal
           target: ${{ matrix.arch.target }}
 
-      - name: Install Dependencies for ARM
+      - name: 为 ARM 架构安装依赖
         if: matrix.arch.name != 'x86_64'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu
 
-      - name: Download and Prepare OpenWrt SDK
+      - name: 下载并准备 OpenWrt SDK
         run: |
           sudo apt-get update
           sudo apt-get install -y wget xz-utils
           wget -q ${{ matrix.arch.sdk_url }} -O sdk.tar.xz
           tar -xf sdk.tar.xz
-          sdk_dir=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*")
-          if [ -d "$sdk_dir" ]; then
-            mv "$sdk_dir" openwrt-sdk
-          else
-            echo "SDK directory not found!" && exit 1
-          fi
+          mv $(find . -maxdepth 1 -type d -name "openwrt-sdk-*") openwrt-sdk
           ls -l openwrt-sdk
 
-      - name: Copy Local Package to SDK
+      - name: 将本地包复制到 SDK 中
         run: |
           if [ ! -d "./ua4f" ]; then
-            echo "Error: 'ua4f' package source directory not found!" && exit 1
+            echo "错误: 未找到 'ua4f' 包源代码目录!" && exit 1
           fi
           cp -r ./ua4f openwrt-sdk/package/
-          echo "Package 'ua4f' successfully copied to SDK package directory."
+          echo "包 'ua4f' 已成功复制到 SDK 包目录中。"
 
-      - name: Configure SDK for Package
+      - name: 为包配置 SDK
         run: |
           cd openwrt-sdk
-          make defconfig  # 生成默认配置
+          make defconfig
           echo "CONFIG_PACKAGE_ua4f=m" >> .config
-          make defconfig  # 更新配置文件
+          make defconfig
 
-      - name: Compile IPK for ${{ matrix.arch.name }}
+      - name: 为 ${{ matrix.arch.name }} 架构编译 IPK 包
         run: |
           cd openwrt-sdk
           make package/ua4f/compile V=s || exit 1
           mkdir -p ../output/${{ matrix.arch.name }}
-          cp bin/packages/${{ matrix.arch.name }}/ua4f/*.ipk ../output/${{ matrix.arch.name }}/ua4f_${{ env.version }}_${{ matrix.arch.name }}.ipk
+          cp bin/packages/${{ matrix.arch.name }}/ua4f/*.ipk ../output/${{ matrix.arch.name }}/ua4f_${{ steps.extract_version.outputs.version }}_${{ matrix.arch.name }}.ipk
 
-      - name: Upload IPK Artifact
+      - name: 上传 IPK 包构件
         uses: actions/upload-artifact@v3
         with:
           name: ua4f-${{ matrix.arch.name }}
-          path: output/${{ matrix.arch.name }}/ua4f_${{ env.version }}_${{ matrix.arch.name }}.ipk
+          path: output/${{ matrix.arch.name }}/ua4f_${{ steps.extract_version.outputs.version }}_${{ matrix.arch.name }}.ipk
           retention-days: 1
           compression-level: 9
