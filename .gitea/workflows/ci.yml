@@ -47,19 +47,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y wget xz-utils
-          echo "Downloading SDK from URL: ${{ matrix.arch.sdk_url }}"
-          wget -q --show-progress --tries=3 --timeout=20 ${{ matrix.arch.sdk_url }} -O sdk.tar.xz
-          if [ $? -ne 0 ]; then
-            echo "Download failed after multiple attempts." && exit 1
-          fi
-          echo "Download completed. Checking file..."
-          echo "Extracting SDK..."
-          tar -xf sdk.tar.xz || { echo "Extraction failed!" && exit 1; }
-          echo "Extraction completed. Listing SDK directory..."
-          mv $(find . -maxdepth 1 -type d -name "openwrt-sdk-*") openwrt-sdk || { echo "SDK directory not found!" && exit 1; }
-      
-      
-      
+          wget ${{ matrix.arch.sdk_url }}
+          tar -xf $(basename ${{ matrix.arch.sdk_url }})
+          mv openwrt-sdk-* openwrt-sdk
+
 
       - name: 将本地包复制到 SDK 中
         run: |
