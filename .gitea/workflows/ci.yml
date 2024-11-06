@@ -18,10 +18,10 @@ jobs:
       - name: Install OpenWrt SDK and Dependencies (x86_64)
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget xz-utils
+          sudo apt-get install -y wget xz-utils rsync
           wget https://downloads.openwrt.org/releases/22.03.0/targets/x86/64/openwrt-sdk-22.03.0-x86-64_gcc-11.2.0_musl.Linux-x86_64.tar.xz
           tar -xf openwrt-sdk-22.03.0-x86-64_gcc-11.2.0_musl.Linux-x86_64.tar.xz
-          mv openwrt-sdk-22.03.0-x86-64_gcc-11.2.0_musl.Linux-x86_64 openwrt-sdk
+          mv openwrt-sdk-22.03.0-x86-64_gcc-11.2.0_musl.Linux-x86_64 openwrt-sdkv
 
       - name: Set Up Rust (x86_64)
         uses: actions-rs/toolchain@v1
