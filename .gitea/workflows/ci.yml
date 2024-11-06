@@ -20,7 +20,7 @@ jobs:
           - { name: armv8, target: aarch64-unknown-linux-musl, sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/rockchip/armv8/openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz" }
 
     steps:
-      - name: Checkout code
+      - name: Checkout Source Code
         uses: actions/checkout@v3
 
       - name: Extract Version from Cargo.toml
@@ -29,21 +29,35 @@ jobs:
           version=$(grep '^version' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
           echo "version=$version" >> $GITHUB_ENV
 
-      - name: Install OpenWrt SDK and Dependencies
+      - name: Install Rust Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.arch.target }}
+          components: rust-std-${{ matrix.arch.target }}
+
+      - name: Install Dependencies for Non-x86 Architectures
+        if: matrix.arch.name != 'x86_64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu
+
+      - name: Download and Prepare OpenWrt SDK
         run: |
           sudo apt-get update
           sudo apt-get install -y wget xz-utils
           wget ${{ matrix.arch.sdk_url }}
           tar -xf $(basename ${{ matrix.arch.sdk_url }})
-          mv openwrt-sdk-* openwrt-sdk
+          sdk_dir=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*")
+          if [ -d "$sdk_dir" ]; then
+            mv "$sdk_dir" openwrt-sdk
+          else
+            echo "SDK directory not found!" && exit 1
+          fi
+          # Check SDK directory
+          ls -l openwrt-sdk
 
-      - name: Set Up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          target: ${{ matrix.arch.target }}
-
-      - name: Build IPK Package
+      - name: Compile IPK Package for ${{ matrix.arch.name }}
         run: |
           cd openwrt-sdk
           ./scripts/feeds update -a
@@ -52,7 +66,7 @@ jobs:
           mkdir -p ../output/${{ matrix.arch.name }}
           cp bin/packages/${{ matrix.arch.name }}/ua4f/*.ipk ../output/${{ matrix.arch.name }}/ua4f_${{ env.version }}_${{ matrix.arch.name }}.ipk
 
-      - name: Upload IPK Artifact
+      - name: Upload IPK Package Artifact
         uses: actions/upload-artifact@v3
         with:
           name: ua4f-${{ matrix.arch.name }}
