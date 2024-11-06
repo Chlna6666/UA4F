@@ -1,4 +1,4 @@
-name: Build and Upload IPK Packages
+name: Build IPK
 
 on:
   push:
@@ -14,12 +14,12 @@ jobs:
     strategy:
       matrix:
         arch:
-          - { name: x86_64, target: x86_64-unknown-linux-musl, sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/x86/64/openwrt-sdk-23.05.0-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz" }
-          - { name: aarch64, target: aarch64-unknown-linux-musl, sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/rockchip/armv8/openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz" }
-          - { name: armv7, target: armv7-unknown-linux-musleabihf, sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/mediatek/mt7629/openwrt-sdk-23.05.0-mediatek-mt7629_gcc-12.3.0_musl_eabi.Linux-x86_64.tar.xz" }
+          - { name: x86_64, target: x86_64-unknown-linux-musl, sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/x86/64/openwrt-sdk-23.05.0-x86-64.tar.xz" }
+          - { name: aarch64, target: aarch64-unknown-linux-musl, sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/rockchip/armv8/openwrt-sdk-23.05.0-armv8.tar.xz" }
+          - { name: armv7, target: armv7-unknown-linux-musleabihf, sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/mediatek/mt7629/openwrt-sdk-23.05.0-mt7629.tar.xz" }
 
     steps:
-      - name: Checkout Source Code
+      - name: Checkout Source
         uses: actions/checkout@v4
 
       - name: Extract Version from Cargo.toml
@@ -28,36 +28,48 @@ jobs:
           version=$(grep '^version' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
           echo "version=$version" >> $GITHUB_ENV
 
-      - name: Install Dependencies
+      - name: Install Rust Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          profile: minimal
+          target: ${{ matrix.arch.target }}
+
+      - name: Install Dependencies for ARM
+        if: matrix.arch.name != 'x86_64'
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget xz-utils rsync build-essential
+          sudo apt-get install -y build-essential gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu
 
       - name: Download and Prepare OpenWrt SDK
         run: |
-          wget ${{ matrix.arch.sdk_url }}
-          tar -xf $(basename ${{ matrix.arch.sdk_url }})
+          sudo apt-get update
+          sudo apt-get install -y wget xz-utils
+          wget -q ${{ matrix.arch.sdk_url }} -O sdk.tar.xz
+          tar -xf sdk.tar.xz
           sdk_dir=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*")
           if [ -d "$sdk_dir" ]; then
             mv "$sdk_dir" openwrt-sdk
           else
             echo "SDK directory not found!" && exit 1
           fi
+          # Verify SDK
+          ls -l openwrt-sdk
 
-      - name: Set up Build Configurations
+      - name: Update Feeds
         run: |
           cd openwrt-sdk
-          echo "CONFIG_PACKAGE_python3-pymysql=n" >> .config
-          make defconfig
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
-      - name: Build IPK Package
+      - name: Compile IPK for ${{ matrix.arch.name }}
         run: |
           cd openwrt-sdk
           make package/feeds/packages/ua4f/compile V=s
           mkdir -p ../output/${{ matrix.arch.name }}
           cp bin/packages/${{ matrix.arch.name }}/ua4f/*.ipk ../output/${{ matrix.arch.name }}/ua4f_${{ env.version }}_${{ matrix.arch.name }}.ipk
 
-      - name: Upload IPK Package Artifact
+      - name: Upload IPK Artifact
         uses: actions/upload-artifact@v3
         with:
           name: ua4f-${{ matrix.arch.name }}
