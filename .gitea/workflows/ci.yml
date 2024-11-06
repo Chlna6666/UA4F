@@ -16,9 +16,9 @@ jobs:
     strategy:
       matrix:
         arch:
-          - { name: x86_64, target: x86_64-unknown-linux-musl, sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/x86/64/openwrt-sdk-23.05.0-x86-64.tar.xz" }
-          - { name: aarch64, target: aarch64-unknown-linux-musl, sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/rockchip/armv8/openwrt-sdk-23.05.0-armv8.tar.xz" }
-          - { name: armv7, target: armv7-unknown-linux-musleabihf, sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/mediatek/mt7629/openwrt-sdk-23.05.0-mt7629.tar.xz" }
+          - { name: x86_64, target: x86_64-unknown-linux-musl, sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/x86/64/openwrt-sdk-23.05.0-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz" }
+          - { name: aarch64, target: aarch64-unknown-linux-musl, sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/rockchip/armv8/openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz" }
+          - { name: armv7, target: armv7-unknown-linux-musleabihf, sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/mediatek/mt7629/openwrt-sdk-23.05.0-mediatek-mt7629_gcc-12.3.0_musl_eabi.Linux-x86_64.tar.xz" }
 
     steps:
       - name: 检出源代码
@@ -50,7 +50,6 @@ jobs:
           wget ${{ matrix.arch.sdk_url }}
           tar -xf $(basename ${{ matrix.arch.sdk_url }})
           mv openwrt-sdk-* openwrt-sdk
-
 
       - name: 将本地包复制到 SDK 中
         run: |
