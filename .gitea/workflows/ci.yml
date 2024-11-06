@@ -50,27 +50,29 @@ jobs:
           sdk_dir=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*")
           if [ -d "$sdk_dir" ]; then
             mv "$sdk_dir" openwrt-sdk
-            echo "SDK successfully prepared."
           else
-            echo "Error: SDK directory not found!" && exit 1
+            echo "SDK directory not found!" && exit 1
           fi
-          # Verify SDK
           ls -l openwrt-sdk
 
       - name: Copy Local Package to SDK
         run: |
-          # 确保 ua4f 包目录存在
           if [ ! -d "./ua4f" ]; then
             echo "Error: 'ua4f' package source directory not found!" && exit 1
           fi
-          # 复制到 SDK 的 package 目录中
           cp -r ./ua4f openwrt-sdk/package/
           echo "Package 'ua4f' successfully copied to SDK package directory."
+
+      - name: Configure SDK for Package
+        run: |
+          cd openwrt-sdk
+          make defconfig  # 生成默认配置
+          echo "CONFIG_PACKAGE_ua4f=m" >> .config
+          make defconfig  # 更新配置文件
 
       - name: Compile IPK for ${{ matrix.arch.name }}
         run: |
           cd openwrt-sdk
-          make defconfig  # 生成默认配置
           make package/ua4f/compile V=s || exit 1
           mkdir -p ../output/${{ matrix.arch.name }}
           cp bin/packages/${{ matrix.arch.name }}/ua4f/*.ipk ../output/${{ matrix.arch.name }}/ua4f_${{ env.version }}_${{ matrix.arch.name }}.ipk
