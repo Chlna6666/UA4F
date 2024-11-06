@@ -32,9 +32,10 @@ jobs:
       - name: Install Rust Toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly  # 使用 nightly 工具链来满足文档中的要求
+          toolchain: nightly
+          profile: minimal
           target: ${{ matrix.arch.target }}
-          components: rust-std-${{ matrix.arch.target }}
+
 
       - name: Install Dependencies for Non-x86 Architectures
         if: matrix.arch.name != 'x86_64'
