@@ -36,7 +36,6 @@ jobs:
           profile: minimal
           target: ${{ matrix.arch.target }}
 
-
       - name: Install Dependencies for Non-x86 Architectures
         if: matrix.arch.name != 'x86_64'
         run: |
@@ -46,7 +45,7 @@ jobs:
       - name: Download and Prepare OpenWrt SDK
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget xz-utils
+          sudo apt-get install -y wget xz-utils rsync  # 安装 rsync
           wget ${{ matrix.arch.sdk_url }}
           tar -xf $(basename ${{ matrix.arch.sdk_url }})
           sdk_dir=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*")
