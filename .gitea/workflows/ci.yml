@@ -63,12 +63,13 @@ jobs:
           cp -r ./openwrt/* openwrt-sdk/package/ua4f
           echo "本地包 'openwrt' 已成功复制到 SDK 的 'ua4f' 包目录中。"
 
-      - name: 配置 SDK
+      - name: 配置 SDK 并生成编译文件
         run: |
           cd openwrt-sdk
           echo "CONFIG_PACKAGE_ua4f=m" >> .config
-          make defconfig
-          echo "SDK 配置已成功完成。"
+          make menuconfig  # 手动确认配置
+          make defconfig   # 确保 .config 配置生效
+
 
       - name: 为 ${{ matrix.arch.name }} 架构编译 IPK 包
         run: |
