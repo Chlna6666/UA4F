@@ -42,16 +42,25 @@ jobs:
           echo "CONFIG_PACKAGE_ua4f=y" >> .config
           make defconfig
 
-      - name: 构建 IPK 包
+      - name: 检查 OpenWrt 配置
         run: |
           cd openwrt/sdk
-          # 指定 Makefile 路径，并在根目录直接构建
-          make -C $(pwd) package/compile V=s -j$(nproc) || exit 1
-          mkdir -p ../output
-          cp bin/packages/aarch64/*/*.ipk ../output/ua4f.ipk
+          cat .config
+          grep "CONFIG_PACKAGE_ua4f=y" .config || echo "CONFIG_PACKAGE_ua4f=y" >> .config
+          make defconfig
+
+      - name: 构建 ua4f IPK 包
+        run: |
+          cd openwrt/sdk
+          make package/ua4f/compile V=s -j$(nproc) || exit 1
+
+      - name: 查找并复制生成的 IPK 文件
+        run: |
+          mkdir -p output
+          find openwrt/sdk/bin/packages -name "*.ipk" -exec cp {} output/ \;
 
       - name: 上传 IPK 包构件
         uses: actions/upload-artifact@v3
         with:
           name: UA4F-IPK
-          path: openwrt/output/ua4f.ipk
+          path: output/
