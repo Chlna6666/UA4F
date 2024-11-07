@@ -4,25 +4,14 @@ on:
   push:
     branches:
       - master
-  pull_request:
-    branches:
-      - master
 
 jobs:
   build:
-    name: 构建 IPK 包 - aarch64
-
     runs-on: ubuntu-latest
 
     steps:
-      - name: 检出源代码
+      - name: 检出代码
         uses: actions/checkout@v4
-
-      - name: 从 Cargo.toml 中提取版本号
-        id: extract_version
-        run: |
-          version=$(grep '^version' Cargo.toml | awk -F\" '{print $2}')
-          echo "version=$version" >> $GITHUB_OUTPUT
 
       - name: 安装 Rust 工具链
         uses: actions-rs/toolchain@v1
@@ -31,50 +20,44 @@ jobs:
           profile: minimal
           target: aarch64-unknown-linux-musl
 
-      - name: 为 ARM 架构安装依赖
+      - name: 安装依赖项
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential gcc-aarch64-linux-gnu
+          sudo apt-get install -y wget xz-utils rsync build-essential
 
-      - name: 下载并准备 OpenWrt SDK
+      - name: 下载并解压 OpenWrt SDK 到 openwrt/sdk 目录
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wget xz-utils rsync
+          mkdir -p openwrt/sdk
           wget https://downloads.openwrt.org/releases/23.05.0/targets/rockchip/armv8/openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-          tar -xf openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+          tar -xf openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz -C openwrt/sdk --strip-components=1
 
-          # 确定解压的 SDK 目录
-          SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*")
-          if [ -z "$SDK_DIR" ]; then
-            echo "错误: 未找到解压后的 SDK 目录！" && exit 1
-          fi
-          mv "$SDK_DIR" openwrt-sdk
-          echo "SDK 已成功解压到 openwrt-sdk。"
-
-      - name: 将本地包复制到 SDK 中
+      - name: 将 `ua4f` 包复制到 SDK
         run: |
-          mkdir -p openwrt-sdk/package/ua4f
-          cp -r ./openwrt/* openwrt-sdk/package/ua4f
-          echo "本地包 'openwrt' 已成功复制到 SDK 的 'ua4f' 包目录中。"
+          mkdir -p openwrt/sdk/package/ua4f
+          cp -r ./openwrt/ua4f/* openwrt/sdk/package/ua4f/
 
-      - name: 配置 SDK 编译 Rust
+      - name: 列出 `ua4f` 包目录内容
         run: |
-          cd openwrt-sdk
+          echo "Listing contents of /openwrt/ua4f/ directory:"
+          ls -la ./openwrt/ua4f/
+          echo "Listing contents of SDK package directory for ua4f:"
+          ls -la ./openwrt/sdk/package/ua4f/
+
+      - name: 配置 OpenWrt SDK
+        run: |
+          cd openwrt/sdk
           echo "CONFIG_PACKAGE_ua4f=y" >> .config
           make defconfig
-          make package/ua4f/{clean,compile} V=s -j$(nproc)
 
-      - name: 编译 IPK 包
+      - name: 构建 IPK 包
         run: |
-          cd openwrt-sdk
+          cd openwrt/sdk
           make package/ua4f/compile V=s -j$(nproc) || exit 1
-          mkdir -p ../output/aarch64
-          cp bin/packages/aarch64/*/*.ipk ../output/aarch64/ua4f_${{ steps.extract_version.outputs.version }}_aarch64.ipk
+          mkdir -p ../output
+          cp bin/packages/aarch64/*/*.ipk ../output/ua4f.ipk
 
       - name: 上传 IPK 包构件
         uses: actions/upload-artifact@v3
         with:
-          name: UA4F-aarch64
-          path: output/aarch64/ua4f_${{ steps.extract_version.outputs.version }}_aarch64.ipk
-          retention-days: 1
-          compression-level: 9
+          name: UA4F-IPK
+          path: openwrt/output/ua4f.ipk
