@@ -40,51 +40,46 @@ jobs:
         if: matrix.arch.name != 'x86_64'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential  rsync gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu
+          sudo apt-get install -y build-essential gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu
 
       - name: 下载并准备 OpenWrt SDK
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget xz-utils
+          sudo apt-get install -y wget xz-utils rsync
           wget ${{ matrix.arch.sdk_url }}
           tar -xf $(basename ${{ matrix.arch.sdk_url }})
 
-          # 列出解压后的内容以确认 SDK 目录
-          echo "解压后当前目录内容："
-          ls -l
-
-          # 查找解压后的 SDK 目录
+          # 确定解压的 SDK 目录
           SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*")
           if [ -z "$SDK_DIR" ]; then
             echo "错误: 未找到解压后的 SDK 目录！" && exit 1
           fi
-          echo "找到的 SDK 目录：$SDK_DIR"
           mv "$SDK_DIR" openwrt-sdk
+          echo "SDK 已成功解压到 openwrt-sdk。"
 
-      # 将 openwrt 目录复制到 SDK 的 package 文件夹中
       - name: 将本地包复制到 SDK 中
         run: |
-          cp -r ./openwrt openwrt-sdk/package/ua4f
-          echo "包 'openwrt' 已成功复制到 SDK 包目录中为 'ua4f'。"
+          cp -r ./openwrt openwrt-sdk/package/UA4F
+          echo "本地包 'openwrt' 已成功复制到 SDK 的 'UA4F' 包目录中。"
 
-      - name: 为包配置 SDK
+      - name: 配置 SDK
         run: |
           cd openwrt-sdk
           make defconfig
-          echo "CONFIG_PACKAGE_ua4f=m" >> .config
+          echo "CONFIG_PACKAGE_UA4F=m" >> .config
           make defconfig
 
       - name: 为 ${{ matrix.arch.name }} 架构编译 IPK 包
         run: |
           cd openwrt-sdk
-          make package/ua4f/compile V=s || exit 1
+          make package/UA4F/compile V=s || exit 1
           mkdir -p ../output/${{ matrix.arch.name }}
-          cp bin/packages/${{ matrix.arch.name }}/ua4f/*.ipk ../output/${{ matrix.arch.name }}/ua4f_${{ steps.extract_version.outputs.version }}_${{ matrix.arch.name }}.ipk
+          cp bin/packages/${{ matrix.arch.name }}/UA4F/*.ipk ../output/${{ matrix.arch.name }}/UA4F_${{ steps.extract_version.outputs.version }}_${{ matrix.arch.name }}.ipk
 
       - name: 上传 IPK 包构件
         uses: actions/upload-artifact@v3
         with:
-          name: ua4f-${{ matrix.arch.name }}
-          path: output/${{ matrix.arch.name }}/ua4f_${{ steps.extract_version.outputs.version }}_${{ matrix.arch.name }}.ipk
+          name: UA4F-${{ matrix.arch.name }}
+          path: output/${{ matrix.arch.name }}/UA4F_${{ steps.extract_version.outputs.version }}_${{ matrix.arch.name }}.ipk
           retention-days: 1
           compression-level: 9
