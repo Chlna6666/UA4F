@@ -30,38 +30,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y wget xz-utils rsync build-essential
 
-      - name: 下载并解压 OpenWrt SDK 到 openwrt/sdk 目录
+      - name: 下载并解压 OpenWrt SDK 到代码目录的 openwrt/sdk 目录
         run: |
           mkdir -p openwrt/sdk
           wget https://downloads.openwrt.org/releases/23.05.0/targets/rockchip/armv8/openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
           tar -xf openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz -C openwrt/sdk --strip-components=1
-
-      - name: 解压后列出 openwrt/sdk 目录内容
-        run: |
-          echo "openwrt/sdk 目录内容:"
-          ls -la openwrt/sdk
-
-      - name: 列出 `openwrt` 目录内容
-        run: |
-          echo "openwrt 目录内容:"
-          ls -la ./openwrt
-
-      - name: 将 Rust 项目文件复制到 SDK 包目录
-        run: |
-          mkdir -p openwrt/ua4f  # 创建目标目录
-          cp -r src/* openwrt/ua4f  # 复制源代码
-          cp Cargo.toml openwrt/ua4f  # 复制 Cargo.toml
-          cp Cargo.lock openwrt/ua4f  # 复制 Cargo.lock
-          cp rustc_targets.mk openwrt/ua4f  # 复制 rustc_targets.mk（如果需要）
-          echo "Rust 项目文件已复制到 openwrt/ua4f 目录中。"
-
-
-      - name: 列出 `ua4f` 包目录内容
-        run: |
-          echo "Listing contents of /openwrt/ua4f/ directory:"
-          ls -la ./openwrt/ua4f/
-          echo "Listing contents of SDK package directory for ua4f:"
-          ls -la ./openwrt/sdk/package/ua4f/
 
       - name: 配置 OpenWrt SDK
         run: |
