@@ -65,11 +65,11 @@ jobs:
 
       - name: 将本地包复制到 SDK 中
         run: |
-          if [ ! -d "./ua4f" ]; then
+          if [ ! -d "./UA4F" ]; then
             echo "错误: 未找到 'ua4f' 包源代码目录!" && exit 1
           fi
-          cp -r ./ua4f openwrt-sdk/package/
-          echo "包 'ua4f' 已成功复制到 SDK 包目录中。"
+          cp -r ./UA4F openwrt-sdk/package/
+          echo "包 'UA4F' 已成功复制到 SDK 包目录中。"
 
       - name: 为包配置 SDK
         run: |
