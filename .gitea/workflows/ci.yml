@@ -67,8 +67,8 @@ jobs:
         run: |
           cd openwrt-sdk
           echo "CONFIG_PACKAGE_ua4f=m" >> .config
-          make menuconfig  # 手动确认配置
           make defconfig   # 确保 .config 配置生效
+
 
 
       - name: 为 ${{ matrix.arch.name }} 架构编译 IPK 包
