@@ -10,6 +10,8 @@ on:
 
 jobs:
   build:
+    name: 构建 IPK 包 - ${{ matrix.arch.name }}  # 通过指定任务名称避免自动拼接
+
     runs-on: ubuntu-latest
 
     strategy:
