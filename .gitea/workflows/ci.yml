@@ -11,15 +11,14 @@ on:
 jobs:
   build:
     name: 构建 IPK 包 - ${{ matrix.arch.simple_name }}
-
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
         arch:
-          - { name: x86_64, target: x86_64-unknown-linux-musl, sdk_arch: "x86_64", sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/x86/64/openwrt-sdk-23.05.0-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz" }
-          - { name: aarch64, target: aarch64-unknown-linux-musl, sdk_arch: "aarch64", sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/rockchip/armv8/openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz" }
-          - { name: armv7, target: armv7-unknown-linux-musleabihf, sdk_arch: "arm_cortex-a7_neon-vfpv4", sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/mediatek/mt7629/openwrt-sdk-23.05.0-mediatek-mt7629_gcc-12.3.0_musl_eabi.Linux-x86_64.tar.xz" }
+          - { simple_name: x86_64, sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/x86/64/openwrt-sdk-23.05.0-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz", target: x86_64-unknown-linux-musl, sdk_arch: "x86_64" }
+          - { simple_name: aarch64, sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/rockchip/armv8/openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz", target: aarch64-unknown-linux-musl, sdk_arch: "aarch64" }
+          - { simple_name: armv7, sdk_url: "https://downloads.openwrt.org/releases/23.05.0/targets/mediatek/mt7629/openwrt-sdk-23.05.0-mediatek-mt7629_gcc-12.3.0_musl_eabi.Linux-x86_64.tar.xz", target: armv7-unknown-linux-musleabihf, sdk_arch: "arm_cortex-a7_neon-vfpv4" }
 
     steps:
       - name: 检出源代码
@@ -39,7 +38,7 @@ jobs:
           target: ${{ matrix.arch.target }}
 
       - name: 为 ARM 架构安装依赖
-        if: matrix.arch.name != 'x86_64'
+        if: matrix.arch.simple_name != 'x86_64'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu
@@ -75,13 +74,13 @@ jobs:
       - name: 检查并拷贝 IPK 包
         run: |
           cd openwrt-sdk
-          mkdir -p ../output/${{ matrix.arch.name }}
-          cp bin/packages/${{ matrix.arch.sdk_arch }}/*/*.ipk ../output/${{ matrix.arch.name }}/ua4f_${{ steps.extract_version.outputs.version }}_${{ matrix.arch.name }}.ipk
+          mkdir -p ../output/${{ matrix.arch.simple_name }}
+          cp bin/packages/${{ matrix.arch.sdk_arch }}/*/*.ipk ../output/${{ matrix.arch.simple_name }}/ua4f_${{ steps.extract_version.outputs.version }}_${{ matrix.arch.simple_name }}.ipk
 
       - name: 上传 IPK 包构件
         uses: actions/upload-artifact@v3
         with:
-          name: UA4F-${{ matrix.arch.name }}
-          path: output/${{ matrix.arch.name }}/ua4f_${{ steps.extract_version.outputs.version }}_${{ matrix.arch.name }}.ipk
+          name: UA4F-${{ matrix.arch.simple_name }}
+          path: output/${{ matrix.arch.simple_name }}/ua4f_${{ steps.extract_version.outputs.version }}_${{ matrix.arch.simple_name }}.ipk
           retention-days: 1
           compression-level: 9
