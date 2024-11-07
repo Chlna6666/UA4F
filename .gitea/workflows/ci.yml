@@ -13,6 +13,11 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
+      - name: 列出代码库根目录内容
+        run: |
+          echo "代码库根目录内容:"
+          ls -la
+
       - name: 安装 Rust 工具链
         uses: actions-rs/toolchain@v1
         with:
@@ -30,6 +35,16 @@ jobs:
           mkdir -p openwrt/sdk
           wget https://downloads.openwrt.org/releases/23.05.0/targets/rockchip/armv8/openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
           tar -xf openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz -C openwrt/sdk --strip-components=1
+
+      - name: 解压后列出 openwrt/sdk 目录内容
+        run: |
+          echo "openwrt/sdk 目录内容:"
+          ls -la openwrt/sdk
+
+      - name: 列出 `openwrt` 目录内容
+        run: |
+          echo "openwrt 目录内容:"
+          ls -la ./openwrt
 
       - name: 将 `ua4f` 包复制到 SDK
         run: |
