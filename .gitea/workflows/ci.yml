@@ -66,15 +66,13 @@ jobs:
       - name: 配置 SDK 并生成编译文件
         run: |
           cd openwrt-sdk
-          echo "CONFIG_PACKAGE_ua4f=m" >> .config
+          echo "CONFIG_PACKAGE_ua4f=y" >> .config
           make defconfig   # 确保 .config 配置生效
-
-
 
       - name: 为 ${{ matrix.arch.name }} 架构编译 IPK 包
         run: |
           cd openwrt-sdk
-          make package/ua4f/compile V=s || exit 1
+          make package/ua4f/{clean,compile} V=s -j$(nproc) || exit 1
           mkdir -p ../output/${{ matrix.arch.name }}
           cp bin/packages/${{ matrix.arch.name }}/*/*.ipk ../output/${{ matrix.arch.name }}/ua4f_${{ steps.extract_version.outputs.version }}_${{ matrix.arch.name }}.ipk
 
