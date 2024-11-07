@@ -30,7 +30,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y wget xz-utils rsync build-essential
 
-      - name: 下载并解压 OpenWrt SDK 到代码目录的 openwrt/sdk 目录
+      - name: 下载并解压 OpenWrt SDK 到代码库根目录的 openwrt/sdk 目录
         run: |
           mkdir -p openwrt/sdk
           wget https://downloads.openwrt.org/releases/23.05.0/targets/rockchip/armv8/openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
@@ -45,7 +45,8 @@ jobs:
       - name: 构建 IPK 包
         run: |
           cd openwrt/sdk
-          make package/ua4f/compile V=s -j$(nproc) || exit 1
+          # 指定 Makefile 路径，并在根目录直接构建
+          make -C $(pwd) package/compile V=s -j$(nproc) || exit 1
           mkdir -p ../output
           cp bin/packages/aarch64/*/*.ipk ../output/ua4f.ipk
 
