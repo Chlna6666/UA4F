@@ -49,7 +49,19 @@ jobs:
           sudo apt-get install -y wget xz-utils
           wget ${{ matrix.arch.sdk_url }}
           tar -xf $(basename ${{ matrix.arch.sdk_url }})
-          mv openwrt-sdk-* openwrt-sdk
+          
+          # 列出目录内容以确认解压后的文件夹名称
+          echo "解压后当前目录内容："
+          ls -l
+
+          # 查找解压后的 SDK 目录名称
+          SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*")
+          if [ -z "$SDK_DIR" ]; then
+            echo "错误: 未找到解压后的 SDK 目录！" && exit 1
+          fi
+          echo "找到的 SDK 目录：$SDK_DIR"
+          mv "$SDK_DIR" openwrt-sdk
+
 
       - name: 将本地包复制到 SDK 中
         run: |
