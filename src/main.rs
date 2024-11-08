@@ -22,13 +22,13 @@ struct Args {
     #[arg(short, long, default_value = "127.0.0.1")]
     bind: String,
 
-    #[arg(short, long, default_value = "1080")]
+    #[arg(short, long, default_value = "1090")]
     port: String,
 
     #[arg(
         short('f'),
         long("user-agent"),
-        default_value = "Mozilla/5.0 (Window NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/555.66"
+        default_value = "FFFF"
     )]
     user_agent: String,
 
