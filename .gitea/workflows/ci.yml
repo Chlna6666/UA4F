@@ -45,13 +45,14 @@ jobs:
       - name: 构建 ua4f IPK 包
         run: |
           cd openwrt/sdk
+          # 创建构建目录并使用 rsync 复制文件，排除 openwrt 目录
           mkdir -p build_dir/target-*/ua4f
-          # 仅复制根目录下的代码和Makefile到目标目录，不复制openwrt目录
-          cp -r ../../!(openwrt) build_dir/target-*/ua4f/
+          rsync -av --exclude='openwrt' ../../ build_dir/target-*/ua4f/
           make package/ua4f/compile V=s -j$(nproc) || exit 1
+          
+          # 创建输出目录并复制生成的 IPK 文件
           mkdir -p ../output
           find bin/targets bin/packages -name "*.ipk" -exec cp {} ../output/ \;
-
 
       - name: 上传 IPK 包构件
         uses: actions/upload-artifact@v3
