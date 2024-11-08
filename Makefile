@@ -21,7 +21,7 @@ endef
 define Package/ua4f/description
   Another User Agent faker, allowing users to bypass multi device detection for Campus Network via socks5 proxy.
 endef
-	
+
 define Build/Prepare
 	$(call Build/Prepare/Default)
 	mkdir -p $(PKG_BUILD_DIR)
@@ -31,7 +31,7 @@ define Build/Prepare
 endef
 
 define Build/Compile
-	cd $(PKG_BUILD_DIR) && cargo rustc --target=$(RUSTC_TARGET_ARCH) --release $(NEED_BUILD_STD) -- -C linker=$(TARGET_CC_NOCACHE) -C ar=$(TARGET_AR)
+	$(MAKE) -C $(PKG_BUILD_DIR) cargo rustc --target=$(RUSTC_TARGET_ARCH) --release $(NEED_BUILD_STD) -- -C linker=$(TARGET_CC_NOCACHE) -C ar=$(TARGET_AR)
 	stat $(PKG_BUILD_DIR)/target/$(RUSTC_TARGET_ARCH)/release/ua4f
 endef
 
