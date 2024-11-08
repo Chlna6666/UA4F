@@ -13,11 +13,6 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 列出代码库根目录内容
-        run: |
-          echo "代码库根目录内容:"
-          ls -la          
-
       - name: 安装 Rust 工具链
         uses: actions-rs/toolchain@v1
         with:
@@ -28,30 +23,27 @@ jobs:
       - name: 安装依赖项
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget xz-utils rsync build-essential          
+          sudo apt-get install -y wget xz-utils rsync build-essential musl-tools gcc-aarch64-linux-gnu   
 
-      - name: 下载并解压 OpenWrt SDK 到代码库根目录的 openwrt/sdk 目录
+      - name: 安装 musl 目标
+        run: rustup target add aarch64-unknown-linux-musl
+
+      - name: 配置链接器
         run: |
-          mkdir -p openwrt/sdk
-          wget https://downloads.openwrt.org/releases/23.05.0/targets/rockchip/armv8/openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-          tar -xf openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz -C openwrt/sdk --strip-components=1          
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc
+          export CC=aarch64-linux-gnu-gcc
 
-      - name: 配置 OpenWrt SDK
-        run: |
-          cd openwrt/sdk
-          echo "CONFIG_PACKAGE_ua4f=y" >> .config
-          make defconfig          
+      - name: 运行测试
+        run: cargo test --target aarch64-unknown-linux-musl
 
-      - name: 构建 IPK 包
-        run: |
-          cd openwrt/sdk
-          # 指定 Makefile 路径，并在根目录直接构建
-          make -C $(pwd) package/compile V=s -j$(nproc) || exit 1
-          mkdir -p ../output
-          cp bin/packages/aarch64/*/*.ipk ../output/ua4f.ipk          
+      - name: 构建
+        run: cargo build --release --target aarch64-unknown-linux-musl
+       
 
-      - name: 上传 IPK 包构件
+      - name: 上传构建
         uses: actions/upload-artifact@v3
         with:
-          name: UA4F-IPK
-          path: openwrt/output/ua4f.ipk
+          name: ua4f
+          path: target/aarch64-unknown-linux-musl/release/ua4f
+          retention-days: 1
+          compression-level: 9
