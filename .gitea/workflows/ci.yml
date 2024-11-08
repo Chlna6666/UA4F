@@ -42,13 +42,12 @@ jobs:
           echo "CONFIG_PACKAGE_ua4f=y" >> .config
           make defconfig          
 
-      - name: 构建 IPK 包
+      - name: 构建 ua4f IPK 包
         run: |
           cd openwrt/sdk
-          # 指定 Makefile 路径，并在根目录直接构建
-          make -C $(pwd) package/compile V=s -j$(nproc) || exit 1
+          make package/ua4f/compile V=s -j$(nproc) || exit 1
           mkdir -p ../output
-          find openwrt/sdk/bin/packages -name "*.ipk" -exec cp {} ../output/ \;
+          find openwrt/sdk/bin/targets openwrt/sdk/bin/packages -name "*.ipk" -exec cp {} ../output/ \;
 
       - name: 上传 IPK 包构件
         uses: actions/upload-artifact@v3
