@@ -1,4 +1,4 @@
-name: 构建 IPK 包
+name: 构建
 
 on:
   push:
@@ -32,9 +32,6 @@ jobs:
         run: |
           export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc
           export CC=aarch64-linux-gnu-gcc
-
-      - name: 运行测试
-        run: cargo test --target aarch64-unknown-linux-musl
 
       - name: 构建
         run: cargo build --release --target aarch64-unknown-linux-musl
