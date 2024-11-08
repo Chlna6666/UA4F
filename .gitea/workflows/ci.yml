@@ -48,7 +48,7 @@ jobs:
           # 指定 Makefile 路径，并在根目录直接构建
           make -C $(pwd) package/compile V=s -j$(nproc) || exit 1
           mkdir -p ../output
-          find / -name "*.ipk" -exec cp {} output/ \;
+          find openwrt/sdk/bin/packages -name "*.ipk" -exec cp {} ../output/ \;
 
       - name: 上传 IPK 包构件
         uses: actions/upload-artifact@v3
