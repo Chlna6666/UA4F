@@ -34,7 +34,13 @@ jobs:
           export CC=aarch64-linux-gnu-gcc
 
       - name: 构建
-        run: cargo build --release --target aarch64-unknown-linux-musl
+        run: |
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc
+          export CC=aarch64-linux-gnu-gcc
+          cargo clean
+          cargo build --release --target aarch64-unknown-linux-musl
+          
+          
        
 
       - name: 上传构建
