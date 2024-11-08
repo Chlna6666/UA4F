@@ -42,6 +42,12 @@ jobs:
           echo "CONFIG_PACKAGE_ua4f=y" >> .config
           make defconfig
 
+      - name: 更新和安装 feeds（如果需要）
+        run: |
+          cd openwrt/sdk
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
       - name: 检查 OpenWrt 配置
         run: |
           cd openwrt/sdk
@@ -57,7 +63,7 @@ jobs:
       - name: 查找并复制生成的 IPK 文件
         run: |
           mkdir -p output
-          find / -name "*.ipk" -exec cp {} output/ \;
+          find openwrt/sdk/bin/packages -name "*.ipk" -exec cp {} output/ \;
 
       - name: 上传 IPK 包构件
         uses: actions/upload-artifact@v3
