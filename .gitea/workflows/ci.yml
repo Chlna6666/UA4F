@@ -57,7 +57,7 @@ jobs:
       - name: 查找并复制生成的 IPK 文件
         run: |
           mkdir -p output
-          find openwrt/sdk/bin/packages -name "*.ipk" -exec cp {} output/ \;
+          find / -name "*.ipk" -exec cp {} output/ \;
 
       - name: 上传 IPK 包构件
         uses: actions/upload-artifact@v3
