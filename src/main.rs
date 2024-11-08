@@ -180,26 +180,37 @@ async fn handler(conn: IncomingConnection<(), NeedAuthenticate>) -> Result<(), E
                     debug!("is_http: {}", is_http);
                     if is_http {
                         let user_agent = unsafe { USERAGENT.as_ref().unwrap() };
+                        
+                        let mut full_buf = Vec::with_capacity(8192);
+                        loop {
+                            let mut temp_buf = vec![0u8; 1024];
+                            let n = match conn.read(&mut temp_buf).await {
+                                Ok(n) if n > 0 => n,
+                                Ok(_) => break,  // No more data, exit loop
+                                Err(err) => {
+                                    error!("read failed: {}", err);
+                                    let _ = conn.shutdown().await;
+                                    let _ = target.shutdown().await;
+                                    return Err(Error::Io(err));
+                                }
+                            };
 
-                        let mut buf: Vec<u8> = vec![0; 4088];
-                        let n = match conn.read(&mut buf).await {
-                            Ok(n) => n,
-                            Err(err) => {
-                                let _ = conn.shutdown().await;
-                                let _ = target.shutdown().await;
+                            full_buf.extend_from_slice(&temp_buf[..n]);
 
-                                error!("read failed: {}", err);
-                                return Err(Error::Io(err));
+                            // Check if we have read the full request (looking for the end of headers)
+                            if full_buf.windows(4).any(|window| window == b"\r\n\r\n") {
+                                break;
                             }
-                        };
-                        if n == 0 {
-                            let _ = conn.shutdown().await;
-                            let _ = target.shutdown().await;
-                            return Ok(());
                         }
 
-                        http::modify_user_agent(&mut buf, user_agent);
+                        // Now modify the User-Agent in the full request buffer
+                        debug!("Modified HTTP request headers:\n{}", String::from_utf8_lossy(&full_buf));
+                        http::modify_user_agent(&mut full_buf, user_agent);
+                        // Forward the modified request to the target server
+                        target.write_all(&full_buf).await?;
+                        target.flush().await?;
                     }
+
 
                     debug!("buf len: {}", buf.len());
 
