@@ -46,7 +46,8 @@ jobs:
         run: |
           cd openwrt/sdk
           mkdir -p build_dir/target-*/ua4f
-          cp -r ../../* build_dir/target-*/ua4f/
+          # 仅复制根目录下的代码和Makefile到目标目录，不复制openwrt目录
+          cp -r ../../!(openwrt) build_dir/target-*/ua4f/
           make package/ua4f/compile V=s -j$(nproc) || exit 1
           mkdir -p ../output
           find bin/targets bin/packages -name "*.ipk" -exec cp {} ../output/ \;
