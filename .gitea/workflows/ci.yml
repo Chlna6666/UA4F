@@ -16,7 +16,7 @@ jobs:
       - name: 列出代码库根目录内容
         run: |
           echo "代码库根目录内容:"
-          ls -la
+          ls -la          
 
       - name: 安装 Rust 工具链
         uses: actions-rs/toolchain@v1
@@ -28,41 +28,26 @@ jobs:
       - name: 安装依赖项
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget xz-utils rsync build-essential
+          sudo apt-get install -y wget xz-utils rsync build-essential          
 
       - name: 下载并解压 OpenWrt SDK 到代码库根目录的 openwrt/sdk 目录
         run: |
           mkdir -p openwrt/sdk
           wget https://downloads.openwrt.org/releases/23.05.0/targets/rockchip/armv8/openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-          tar -xf openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz -C openwrt/sdk --strip-components=1
+          tar -xf openwrt-sdk-23.05.0-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz -C openwrt/sdk --strip-components=1          
 
       - name: 配置 OpenWrt SDK
         run: |
           cd openwrt/sdk
           echo "CONFIG_PACKAGE_ua4f=y" >> .config
-          make defconfig
+          make defconfig          
 
-      - name: 更新和安装 feeds（如果需要）
+      - name: 构建 IPK 包
         run: |
           cd openwrt/sdk
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
-
-      - name: 检查 OpenWrt 配置
-        run: |
-          cd openwrt/sdk
-          cat .config
-          grep "CONFIG_PACKAGE_ua4f=y" .config || echo "CONFIG_PACKAGE_ua4f=y" >> .config
-          make defconfig
-
-      - name: 构建 ua4f IPK 包
-        run: |
-          cd openwrt/sdk
-          make package/ua4f/compile V=s -j$(nproc) || exit 1
-
-      - name: 查找并复制生成的 IPK 文件
-        run: |
-          mkdir -p output
+          # 指定 Makefile 路径，并在根目录直接构建
+          make -C $(pwd) package/compile V=s -j$(nproc) || exit 1
+          mkdir -p ../output
           find openwrt/sdk/bin/packages -name "*.ipk" -exec cp {} output/ \;
 
       - name: 上传 IPK 包构件
