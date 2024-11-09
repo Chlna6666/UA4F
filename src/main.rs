@@ -2,7 +2,7 @@ pub mod http;
 pub mod utils;
 
 use std::sync::Arc;
-
+use std::thread;
 use clap::{command, Parser};
 use log::{debug, error, info, warn};
 use socks5_server::{
@@ -15,6 +15,10 @@ use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
+use tokio::runtime::Builder;
+
+
+static mut USERAGENT: Option<String> = None;
 
 #[derive(Parser, Debug)]
 #[command(version, long_about = "")]
@@ -22,7 +26,7 @@ struct Args {
     #[arg(short, long, default_value = "127.0.0.1")]
     bind: String,
 
-    #[arg(short, long, default_value = "1080")]
+    #[arg(short, long, default_value = "1090")]
     port: String,
 
     #[arg(
@@ -39,26 +43,31 @@ struct Args {
     no_file_log: bool,
 }
 
+
 fn main() {
+    // 动态获取 CPU 核心数
+    let cpu_cores = num_cpus::get();
+    println!("Detected CPU cores: {}", cpu_cores);
+
+    // 手动创建 Tokio 多线程运行时
+    let runtime = Builder::new_multi_thread()
+        .worker_threads(cpu_cores)
+        .enable_all()
+        .build()
+        .expect("Failed to create Tokio runtime");
+
+    // 在运行时内启动服务器
     let args = Args::parse();
-    start_server(args);
+    runtime.block_on(start_server(args));
 }
 
-static mut USERAGENT: Option<String> = None;
-
-#[tokio::main]
 async fn start_server(args: Args) {
     // 初始化日志
     utils::init_logger(args.log_level, args.no_file_log);
-    info!("UA4F started");
+    info!("UA4F started on {} cores", num_cpus::get());
     info!("Author: {}", env!("CARGO_PKG_AUTHORS"));
     info!("Version: {}", env!("CARGO_PKG_VERSION"));
     info!("Listening on {}:{}", args.bind, args.port);
-
-    // 设置全局的用户代理（USERAGENT变量）
-    unsafe {
-        USERAGENT = Some(args.user_agent);
-    }
 
     // 绑定监听地址和端口
     let listener = match TcpListener::bind(format!("{}:{}", args.bind, args.port)).await {
@@ -68,6 +77,9 @@ async fn start_server(args: Args) {
             return;
         }
     };
+    unsafe {
+        USERAGENT = Some(args.user_agent);
+    }
 
     let auth = Arc::new(NoAuth);
     let server = socks5_server::Server::new(listener, auth);
@@ -77,6 +89,9 @@ async fn start_server(args: Args) {
         match server.accept().await {
             Ok((conn, _)) => {
                 tokio::spawn(async move {
+                    // 添加线程 ID 的日志信息
+                    debug!("Handling connection on thread {:?}", thread::current().id());
+
                     if let Err(err) = handler(conn).await {
                         error!("Connection handling error: {}", err);
                     }
@@ -153,70 +168,62 @@ async fn handler(conn: IncomingConnection<(), NeedAuthenticate>) -> Result<(), E
                     let mut conn = match replied {
                         Ok(conn) => conn,
                         Err((err, mut conn)) => {
-                            error!("reply failed: {}", err);
+                            error!("回复失败: {}", err);
                             let _ = conn.shutdown().await;
                             return Err(Error::Io(err));
                         }
                     };
 
-                    let mut buf: Vec<u8> = vec![0; 8];
-                    let n = match conn.read(&mut buf).await {
-                        Ok(n) => n,
-                        Err(err) => {
-                            let _ = conn.shutdown().await;
-                            let _ = target.shutdown().await;
+                    // 初始缓冲区设为 1024 字节
+                    let mut buf: Vec<u8> = vec![0; 1024];
+                    let mut n = 0; // 实际读取的字节数
 
-                            error!("read failed: {}", err);
-                            return Err(Error::Io(err));
+                    loop {
+                        let bytes_read = match conn.read(&mut buf[n..]).await {
+                            Ok(0) => break, // 读取完成
+                            Ok(bytes) => bytes,
+                            Err(err) => {
+                                let _ = conn.shutdown().await;
+                                let _ = target.shutdown().await;
+                                error!("读取失败: {}", err);
+                                return Err(Error::Io(err));
+                            }
+                        };
+
+                        n += bytes_read;
+
+                        // 检查是否已经读取到完整的请求头（即 "\r\n\r\n"）
+                        if buf.windows(4).any(|window| window == b"\r\n\r\n") {
+                            break;
                         }
-                    };
-                    debug!("read {} bytes", n);
-                    if n == 0 {
-                        let _ = conn.shutdown().await;
-                        let _ = target.shutdown().await;
-                        return Ok(());
+
+                        // 若缓冲区已满且还没有读取到完整请求头，则扩展缓冲区
+                        if n == buf.len() {
+                            buf.resize(buf.len() + 1024, 0); // 每次扩展 1024 字节
+                        }
                     }
-                    let is_http = http::is_http_request(&mut buf[..n]);
+
+                    debug!("读取了 {} 字节", n);
+
+                    // 判断是否为 HTTP 请求
+                    let is_http = http::is_http_request(&buf[..n]);
                     debug!("is_http: {}", is_http);
+
                     if is_http {
                         let user_agent = unsafe { USERAGENT.as_ref().unwrap() };
-                        
-                        let mut full_buf = Vec::with_capacity(8192);
-                        loop {
-                            let mut temp_buf = vec![0u8; 1024];
-                            let n = match conn.read(&mut temp_buf).await {
-                                Ok(n) if n > 0 => n,
-                                Ok(_) => break,  // No more data, exit loop
-                                Err(err) => {
-                                    error!("read failed: {}", err);
-                                    let _ = conn.shutdown().await;
-                                    let _ = target.shutdown().await;
-                                    return Err(Error::Io(err));
-                                }
-                            };
 
-                            full_buf.extend_from_slice(&temp_buf[..n]);
-
-                            // Check if we have read the full request (looking for the end of headers)
-                            if full_buf.windows(4).any(|window| window == b"\r\n\r\n") {
-                                break;
-                            }
-                        }
-
-                        // Now modify the User-Agent in the full request buffer
-                        debug!("Modified HTTP request headers:\n{}", String::from_utf8_lossy(&full_buf));
-                        http::modify_user_agent(&mut full_buf, user_agent);
-                        // Forward the modified request to the target server
-                        target.write_all(&full_buf).await?;
+                        // 修改 User-Agent
+                        http::modify_user_agent(&mut buf, user_agent);
+                        // 将修改后的请求转发到目标服务器
+                        target.write_all(&buf[..n]).await?;
+                        target.flush().await?;
+                    } else {
+                        // 若非 HTTP 请求，直接转发
+                        target.write_all(&buf[..n]).await?;
                         target.flush().await?;
                     }
 
-
-                    debug!("buf len: {}", buf.len());
-
-                    target.write(&buf[..buf.len()]).await?;
-                    target.flush().await?;
-
+                    // 双向数据转发
                     let res = io::copy_bidirectional(&mut target, &mut conn).await;
                     let _ = conn.shutdown().await;
                     let _ = target.shutdown().await;
@@ -224,7 +231,7 @@ async fn handler(conn: IncomingConnection<(), NeedAuthenticate>) -> Result<(), E
                     res?;
                 }
                 Err(err) => {
-                    warn!("connect failed: {}", err);
+                    warn!("连接失败: {}", err);
 
                     let replied = connect
                         .reply(Reply::HostUnreachable, Address::unspecified())
@@ -241,6 +248,7 @@ async fn handler(conn: IncomingConnection<(), NeedAuthenticate>) -> Result<(), E
                     let _ = conn.shutdown().await;
                 }
             }
+
         }
         Err((err, mut conn)) => {
             let _ = conn.shutdown().await;
