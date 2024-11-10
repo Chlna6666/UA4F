@@ -1,4 +1,4 @@
-use log::{debug, error};
+use tracing::{error, debug,};
 
 // 判断是否为 HTTP 请求
 pub fn is_http_request(buf: &[u8]) -> bool {

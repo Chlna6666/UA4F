@@ -1,11 +1,8 @@
-use log::LevelFilter;
-use log4rs::append::console::ConsoleAppender;
-use log4rs::append::file::FileAppender;
-use log4rs::config::{Appender, Config, Root};
-use log4rs::encode::pattern::PatternEncoder;
-
-const PATTERN: &str = "{d(%Y-%m-%d %H:%M:%S %Z)} [{h({l})}] {M} - {m}{n}";
-
+use tracing_subscriber::{fmt, EnvFilter, Layer, Registry};
+use tracing_subscriber::layer::SubscriberExt;
+use std::fs::{create_dir_all, OpenOptions};
+use std::path::Path;
+use tracing_subscriber::fmt::time::LocalTime;
 
 #[cfg(target_os = "linux")]
 const LOG_PATH: &str = "/var/log/ua4f.log";
@@ -14,44 +11,41 @@ const LOG_PATH: &str = "/var/log/ua4f.log";
 const LOG_PATH: &str = "./log/ua4f.log";
 
 pub fn init_logger(level: String, no_file_log: bool) {
-    let log_level = match level.as_str() {
-        "debug" => LevelFilter::Debug,
-        "info" => LevelFilter::Info,
-        "warn" => LevelFilter::Warn,
-        "error" => LevelFilter::Error,
-        _ => LevelFilter::Info,
-    };
+    // 控制台层
+    let console_layer = fmt::Layer::default()
+        .with_writer(std::io::stdout)
+        .with_timer(LocalTime::rfc_3339())  // 使用系统本地时间，格式为RFC 3339
+        .with_ansi(true)  // 控制台层保留颜色
+        .with_filter(EnvFilter::new(level.clone()));
 
-    // Console Appender with pattern encoding
-    let stdout = ConsoleAppender::builder()
-        .encoder(Box::new(PatternEncoder::new(PATTERN)))
-        .build();
+    // 文件层
+    let file_layer = if !no_file_log {
+        // 获取日志文件路径的目录
+        if let Some(log_dir) = Path::new(LOG_PATH).parent() {
+            // 如果目录不存在则创建
+            create_dir_all(log_dir).expect("无法创建日志文件目录");
+        }
 
-    // File Appender with pattern encoding
-    let logfile = FileAppender::builder()
-        .encoder(Box::new(PatternEncoder::new(PATTERN)))
-        .build(LOG_PATH)
-        .expect("Failed to create log file appender");
+        let file_writer = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(LOG_PATH)
+            .expect("无法打开日志文件");
 
-    // Root configuration based on no_file_log option
-    let root = if no_file_log {
-        Root::builder().appender("stdout").build(log_level)
+        Some(fmt::Layer::default()
+            .with_writer(file_writer)
+            .with_timer(LocalTime::rfc_3339())  // 使用系统本地时间
+            .with_ansi(false)  // 文件层取消颜色
+            .with_filter(EnvFilter::new(level)))
     } else {
-        Root::builder().appender("stdout").appender("logfile").build(log_level)
+        None
     };
 
-    // Config Builder
-    let config_builder = Config::builder().appender(Appender::builder().build("stdout", Box::new(stdout)));
+    // 构建组合后的订阅者
+    let subscriber = Registry::default()
+        .with(console_layer)
+        .with(file_layer);  // 确保 file_layer 被添加
 
-    let config = if no_file_log {
-        config_builder.build(root).expect("Failed to build config")
-    } else {
-        config_builder
-            .appender(Appender::builder().build("logfile", Box::new(logfile)))
-            .build(root)
-            .expect("Failed to build config")
-    };
-
-    // Initialize log configuration
-    log4rs::init_config(config).expect("Failed to initialize logger");
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("无法设置全局默认日志订阅者");
 }
