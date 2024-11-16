@@ -730,6 +730,7 @@ dependencies = [
  "bytes",
  "clap",
  "num_cpus",
+ "once_cell",
  "socks5-server",
  "tokio",
  "tracing",
