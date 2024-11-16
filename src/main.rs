@@ -61,7 +61,7 @@ struct Args {
     #[arg(short, long, default_value = "127.0.0.1")]
     bind: String,
 
-    #[arg(short, long, default_value = "1080")]
+    #[arg(short, long, default_value = "1090")]
     port: String,
 
     #[arg(short('f'), long("user-agent"), default_value = "FFFF")]
