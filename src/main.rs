@@ -179,8 +179,8 @@ async fn handle_tcp_connect(connect: Connect<NeedReply>, addr: Address) -> Resul
         }
     };
 
-    // 动态分配缓冲区
-    let mut buf = vec![0; 1024];
+
+    let mut buf = vec![0; 4088];
 
     let initial_read = conn.read(&mut buf).await?;
     if initial_read == 0 {
