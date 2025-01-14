@@ -1,7 +1,7 @@
 pub mod http;
-pub mod utils;
+
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use clap::{command, Parser};
 use tracing::{info, warn, error, debug};
@@ -14,46 +14,20 @@ use socks5_server::{
     connection::connect::{Connect, state::NeedReply}
 };
 
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
-};
-use tokio::sync::Mutex;
+use tokio::{io, io::{AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream}};
+use once_cell::sync::OnceCell;
 
-use once_cell::sync::Lazy;
-use socks5_server::connection::connect::state::Ready;
+use ua4f::utils;
 
-static USERAGENT: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
+static USERAGENT: OnceCell<Arc<String>> = OnceCell::new();
 
-async fn set_user_agent(agent: String) {
-    let mut ua = USERAGENT.lock().await;
-    *ua = Some(agent);
+async fn  set_user_agent(agent: String) {
+    USERAGENT.set(Arc::new(agent)).ok();
 }
 
-// 获取全局 User-Agent
-async fn get_user_agent() -> Option<String> {
-    USERAGENT.lock().await.clone()
+async fn get_user_agent() -> Option<Arc<String>> {
+    USERAGENT.get().cloned()
 }
-
-
-
-struct BufferPool {
-    buffer: Mutex<Vec<u8>>,
-}
-
-impl BufferPool {
-    fn new(size: usize) -> Self {
-        Self {
-            buffer: Mutex::new(vec![0; size]),
-        }
-    }
-
-    async fn get_buffer(&self) -> tokio::sync::MutexGuard<'_, Vec<u8>> {
-        self.buffer.lock().await
-    }
-}
-
-
 
 #[derive(Parser, Debug)]
 #[command(version, long_about = "")]
@@ -61,7 +35,7 @@ struct Args {
     #[arg(short, long, default_value = "127.0.0.1")]
     bind: String,
 
-    #[arg(short, long, default_value = "1090")]
+    #[arg(short, long, default_value = "1080")]
     port: String,
 
     #[arg(short('f'), long("user-agent"), default_value = "FFFF")]
@@ -86,8 +60,6 @@ fn main() {
     runtime.block_on(start_server(args));
 }
 
-
-
 async fn start_server(args: Args) {
     // 记录启动时间
     let start_time = Instant::now();
@@ -103,7 +75,7 @@ async fn start_server(args: Args) {
         });
 
     // 初始化日志
-    utils::init_logger(args.log_level.clone(), args.no_file_log);
+    utils::logger::init_logger(args.log_level.clone(), args.no_file_log);
     info!("UA4F started on {} cores", num_cpus::get());
     info!("Author: {}", env!("CARGO_PKG_AUTHORS"));
     info!("Version: {}", env!("CARGO_PKG_VERSION"));
@@ -120,11 +92,10 @@ async fn start_server(args: Args) {
             Ok((conn, _)) => {
                 tokio::spawn(handler(conn));
             }
-            Err(err) => error!("Failed to accept connection: {}", err),
+            Err(err) => error!("无法接受连接: {}", err),
         }
     }
 }
-
 
 async fn handler(conn: IncomingConnection<(), NeedAuthenticate>) -> Result<(), Error> {
     // 尝试认证
@@ -160,104 +131,99 @@ async fn handler(conn: IncomingConnection<(), NeedAuthenticate>) -> Result<(), E
     Ok(())
 }
 
-async fn copy_bidirectional_optimized(
-    mut conn: Connect<Ready>,
-    mut target: TcpStream,
-    buffer_size: usize,
-) -> Result<(), Error> {
-    let mut conn_buf = vec![0u8; buffer_size];
-    let mut target_buf = vec![0u8; buffer_size];
-
-    loop {
-        tokio::select! {
-            result = conn.read(&mut conn_buf) => match result {
-                Ok(0) => break, // Connection closed
-                Ok(n) => {
-                    target.write_all(&conn_buf[..n]).await?;
-                }
-                Err(e) => {
-                    error!("从连接读取失败: {}", e);
-                    return Err(Error::Io(e));
-                }
-            },
-            result = target.read(&mut target_buf) => match result {
-                Ok(0) => break, // Target closed
-                Ok(n) => {
-                    conn.write_all(&target_buf[..n]).await?;
-                }
-                Err(e) => {
-                    error!("从目标读取失败: {}", e);
-                    return Err(Error::Io(e));
-                }
-            },
-        }
-    }
-    Ok(())
-}
-
 
 async fn handle_tcp_connect(connect: Connect<NeedReply>, addr: Address) -> Result<(), Error> {
+    let timeout = Duration::from_secs(30);
+    let address_info = match &addr {
+        Address::DomainAddress(domain, port) => format!("{}:{}", String::from_utf8_lossy(domain), port),
+        Address::SocketAddress(socket_addr) => format!("{}", socket_addr),
+    };
+
     let target = match addr {
         Address::DomainAddress(domain, port) => {
             let domain = String::from_utf8_lossy(&domain);
-            TcpStream::connect((domain.as_ref(), port)).await
+            tokio::time::timeout(timeout, TcpStream::connect((domain.as_ref(), port))).await
         }
-        Address::SocketAddress(addr) => TcpStream::connect(addr).await,
+        Address::SocketAddress(addr) => tokio::time::timeout(timeout, TcpStream::connect(addr)).await,
     };
 
-    match target {
-        Ok(mut target) => {
-            let replied = connect.reply(Reply::Succeeded, Address::unspecified()).await;
-            let mut conn = match replied {
-                Ok(conn) => conn,
-                Err((err, mut conn)) => {
-                    error!("Reply failed: {}", err);
-                    conn.shutdown().await?;
-                    return Err(Error::Io(err));
-                }
-            };
-
-            let buffer_pool = Arc::new(BufferPool::new(16 * 1024)); // 增大缓冲区大小
-            let mut buf = buffer_pool.get_buffer().await;
-            let initial_read = conn.read(&mut buf).await?;
-            if initial_read == 0 {
-                conn.shutdown().await?;
-                target.shutdown().await?;
-                return Ok(());
-            }
-
-            let is_http = http::is_http_request(&buf[..initial_read]);
-            debug!("is_http: {}", is_http);
-            if is_http {
-                if let Some(user_agent) = get_user_agent().await {
-                    http::modify_user_agent(&mut buf, &*user_agent);
-                }
-            }
-
-            target.write_all(&buf[..initial_read]).await?;
-            target.flush().await?;
-            debug!("写入目标连接耗时");
-
-            let spawn_start = Instant::now();
-            // 设置优化参数
-            target.set_nodelay(true)?;
-
-
-            // 自定义双向转发逻辑
-            copy_bidirectional_optimized(conn, target, 16 * 1024).await?;
-
-            let spawn_duration = spawn_start.elapsed();
-            debug!("双向传输耗时: {}ms", spawn_duration.as_millis());
-        }
-
-        Err(err) => {
-            warn!("Connection failed: {}", err);
+    let mut target = match target {
+        Ok(Ok(stream)) => stream,
+        Ok(Err(err)) => {
+            warn!("无法连接到目标 {}: {}", address_info, err);
             if let Ok(mut conn) = connect.reply(Reply::HostUnreachable, Address::unspecified()).await {
                 conn.shutdown().await?;
             }
             return Err(Error::Io(err));
         }
+        Err(_) => {
+            warn!("与目标的连接 {} 超时", address_info);
+            if let Ok(mut conn) = connect.reply(Reply::TtlExpired, Address::unspecified()).await {
+                conn.shutdown().await?;
+            }
+            return Err(Error::Io(io::Error::new(io::ErrorKind::TimedOut, "连接超时")));
+        }
+    };
+
+    if let Err(err) = target.set_nodelay(true) {
+        warn!("设置 TCP_NODELAY 失败: {}", err);
     }
 
+    let replied = connect.reply(Reply::Succeeded, Address::unspecified()).await;
+    let mut conn = match replied {
+        Ok(conn) => conn,
+        Err((err, mut conn)) => {
+            error!("回复失败 : {}", err);
+            conn.shutdown().await?;
+            return Err(Error::Io(err));
+        }
+    };
+
+    // 动态分配缓冲区
+    let mut buf = vec![0; 1024];
+
+    let initial_read = conn.read(&mut buf).await?;
+    if initial_read == 0 {
+        conn.shutdown().await?;
+        target.shutdown().await?;
+        return Ok(());
+    }
+
+    if http::is_http_request(&buf[..initial_read]) {
+        debug!("检测到HTTP请求");
+        if let Some(user_agent) = get_user_agent().await {
+            http::modify_user_agent(&mut buf, &*user_agent);
+        }
+    }
+
+    if let Err(err) = target.write_all(&buf[..initial_read]).await {
+        warn!("未能将初始数据写入目标 {}: {}", address_info, err);
+    }
+
+    if let Err(err) = target.flush().await {
+        warn!("数据 flush 到目标失败 {}: {}", address_info, err);
+    }
+
+
+
+    let result = io::copy_bidirectional_with_sizes(&mut conn, &mut target, buf.len(), buf.len())
+        .await
+        .map_err(|err| {
+            error!("双向传输失败：{}，目标地址：{}", err, address_info);
+            err
+        });
+
+    match result {
+        Ok((from_conn, from_target)) => {
+            debug!(
+                "传输完成：从客户端读取 {} 字节，从目标读取 {} 字节，目标地址：{}",
+                from_conn, from_target, address_info
+            );
+        }
+        Err(err) => return Err(Error::Io(err)),
+    }
+
+    conn.shutdown().await?;
+    target.shutdown().await?;
     Ok(())
 }

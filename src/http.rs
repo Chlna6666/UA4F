@@ -1,6 +1,6 @@
-use tracing::{error, debug,};
+use tracing::{error, debug};
+use memchr::memmem;
 
-// 判断是否为 HTTP 请求
 pub fn is_http_request(buf: &[u8]) -> bool {
     matches!(
         buf,
@@ -16,39 +16,53 @@ pub fn is_http_request(buf: &[u8]) -> bool {
     )
 }
 
-// 修改 User-Agent
+
+
 pub fn modify_user_agent(buf: &mut Vec<u8>, user_agent: &str) {
     const USER_AGENT_HEADER: &[u8] = b"User-Agent: ";
-    let buf_len = buf.len();
 
-    // 定位 User-Agent 头的起始位置
-    if let Some(start) = buf.windows(USER_AGENT_HEADER.len()).position(|window| window == USER_AGENT_HEADER) {
-        let start = start + USER_AGENT_HEADER.len();
-
-        // 使用 `\r\n` 定位 User-Agent 头的结束位置
-        let end = buf[start..]
-            .windows(2)
-            .position(|window| window == b"\r\n")
-            .map(|pos| start + pos)
-            .unwrap_or(buf_len); // 如果找不到结束标记，默认使用缓冲区末尾
-
-        // 检查 User-Agent 是否在白名单中
-        if check_is_in_whitelist(&buf[start..end]) {
-            debug!("User-Agent 在白名单中，无需修改。");
+    let start = match memmem::find(buf, USER_AGENT_HEADER) {
+        Some(pos) => pos + USER_AGENT_HEADER.len(),
+        None => {
+            error!("未找到 User-Agent 头");
             return;
         }
+    };
 
-        // 替换 User-Agent 内容
-        buf.splice(start..end, user_agent.as_bytes().iter().copied());
-        debug!("修改后的 HTTP 请求:\n{}", String::from_utf8_lossy(&buf));
-    } else {
-        error!("未找到 User-Agent 头");
+    let end = match buf[start..].iter().position(|&b| b == b'\r') {
+        Some(pos) => start + pos,
+        None => {
+            error!("未找到 User-Agent 结束符");
+            return;
+        }
+    };
+
+    if end - start > 1024 {
+        error!("User-Agent 字段超长，无法修改");
+        return;
     }
-}
+    /*
 
-// 检查 User-Agent 是否在白名单中
+    if check_is_in_whitelist(&buf[start..end]) {
+        debug!("User-Agent 在白名单中，无需修改。");
+        return;
+    }
+
+    */
+    buf.splice(start..end, user_agent.as_bytes().iter().copied());
+    debug!(
+        "User-Agent 已修改为: {}",
+        String::from_utf8_lossy(&buf[start..start + user_agent.len()])
+    );
+}
+/*
 fn check_is_in_whitelist(buf: &[u8]) -> bool {
-    const WHITELIST: &[&[u8]] = &[b"micromessenger client", b"bilibili"];
+    const WHITELIST: &[&[u8]] = &[
+        b"micromessenger client",
+        b"bilibili",
+    ];
 
-    WHITELIST.iter().any(|&item| buf.windows(item.len()).any(|window| window.eq_ignore_ascii_case(item)))
+    let lower_buf = buf.iter().map(|&b| b.to_ascii_lowercase());
+    WHITELIST.iter().any(|&item| lower_buf.clone().eq(item.iter().copied()))
 }
+*/
