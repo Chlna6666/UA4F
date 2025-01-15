@@ -1,4 +1,4 @@
-name: 打包并上传IPK文件
+name: 构建
 
 on:
   push:
@@ -6,8 +6,9 @@ on:
       - master
 
 jobs:
-  package:
+  build:
     runs-on: ubuntu-latest
+
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -22,7 +23,7 @@ jobs:
       - name: 安装依赖项
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget xz-utils rsync build-essential musl-tools gcc-aarch64-linux-gnu
+          sudo apt-get install -y wget xz-utils rsync build-essential musl-tools gcc-aarch64-linux-gnu   
 
       - name: 安装 musl 目标
         run: rustup target add aarch64-unknown-linux-musl
@@ -39,55 +40,10 @@ jobs:
           cargo clean
           cargo build --release --target aarch64-unknown-linux-musl
 
-      - name: 定义变量并准备打包目录
-        run: |
-          # 定义通用变量
-          VERSION=$(grep '^version' Cargo.toml | head -n 1 | cut -d '"' -f2)
-          ARCH="aarch64"
-          SIZE=$(du -sk openwrt | cut -f1)
-          EPOCH=$(date +%s)
-
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "ARCH=$ARCH" >> $GITHUB_ENV
-          echo "SIZE=$SIZE" >> $GITHUB_ENV
-          echo "EPOCH=$EPOCH" >> $GITHUB_ENV
-
-          # 创建打包目录
-          mkdir -p openwrt/usr/bin
-          mkdir -p openwrt/etc/init.d
-
-          # 将构建好的二进制文件放入目标目录
-          cp target/aarch64-unknown-linux-musl/release/ua4f openwrt/usr/bin/
-
-          # 确保固定的 etc 和 usr 内容已经存在于 openwrt 目录
-
-          # 处理 ipkg/CONTROL/control 文件中的占位符
-          mkdir -p ipkg/CONTROL
-          sed -e "s/\$VERSION/$VERSION/" \
-              -e "s/\$EPOCH/$EPOCH/" \
-              -e "s/\$ARCH/$ARCH/" \
-              -e "s/\$SIZE/$SIZE/" \
-              ipkg/CONTROL/control > ipkg/CONTROL/control.new
-          mv ipkg/CONTROL/control.new ipkg/CONTROL/control
-
-      - name: 打包IPK文件
-        run: |
-          # 读取通用变量
-          VERSION=$VERSION
-          ARCH=$ARCH
-
-          mkdir -p build
-          cd openwrt
-          tar -czf ../build/data.tar.gz ./*
-          cd ../ipkg/CONTROL
-          tar -czf ../../build/control.tar.gz ./*
-          cd ../../build
-          echo "2.0" > debian-binary
-          ar r ua4f_${VERSION}_${ARCH}.ipk control.tar.gz data.tar.gz debian-binary
-
-      - name: 上传IPK文件
+      - name: 上传构建
         uses: actions/upload-artifact@v3
         with:
-          name: ua4f-ipk
-          path: build/ua4f_*.ipk
+          name: ua4f
+          path: target/aarch64-unknown-linux-musl/release/ua4f
           retention-days: 1
+          compression-level: 9
