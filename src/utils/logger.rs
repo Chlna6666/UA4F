@@ -2,9 +2,8 @@ use tracing_subscriber::{fmt, EnvFilter, Layer, Registry};
 use tracing_subscriber::layer::SubscriberExt;
 use time::macros::format_description;
 use time::UtcOffset;
-use std::fs::{create_dir_all};
+use std::fs::{create_dir_all, OpenOptions};
 use std::path::Path;
-use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::fmt::time::OffsetTime;
 
 
@@ -24,7 +23,7 @@ pub fn init_logger(level: String, no_file_log: bool) {
 
     let timer = OffsetTime::new(
         local_offset,
-        format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:6]"),
+        format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"),
     );
 
     // 控制台层
@@ -35,18 +34,23 @@ pub fn init_logger(level: String, no_file_log: bool) {
         .with_target(true) // 显示目标模块
         .with_filter(EnvFilter::new(level.clone()));
 
-    // 滚动日志文件层
+    // 单一日志文件层
     let file_layer = if !no_file_log {
         let log_dir = Path::new(LOG_DIR);
 
         // 创建日志目录
         create_dir_all(log_dir).expect("Unable to create log directory");
 
-        // 使用 tracing-appender 实现按日滚动日志
-        let rolling_appender = RollingFileAppender::new(Rotation::DAILY, log_dir, LOG_FILE);
+        // 打开日志文件以追加方式写入
+        let log_file_path = log_dir.join(LOG_FILE);
+        let log_file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_file_path)
+            .expect("Unable to open log file");
 
         Some(fmt::Layer::default()
-            .with_writer(rolling_appender)
+            .with_writer(move || log_file.try_clone().expect("Failed to clone log file handle"))
             .with_timer(timer) // 使用与控制台相同的时间格式
             .with_ansi(false)  // 文件日志不需要颜色
             .with_target(true)

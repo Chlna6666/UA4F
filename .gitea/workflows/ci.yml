@@ -105,4 +105,3 @@ jobs:
           name: ua4f-ipk
           path: build/ua4f_*.ipk
           retention-days: 1
-      
