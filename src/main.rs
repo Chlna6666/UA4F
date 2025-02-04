@@ -1,20 +1,32 @@
 pub mod http;
 
-
-use tokio::{net::{TcpListener, TcpStream, UdpSocket}, io::{AsyncReadExt, AsyncWriteExt},io};
+use tokio::{net::{TcpListener, TcpStream}, io::{AsyncReadExt, AsyncWriteExt},io};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use clap::{Parser, command};
 use tracing::{info, warn, error, debug};
-use socks5_server::{auth::NoAuth, connection::state::NeedAuthenticate, proto::{Address, Error, Reply}, Command, IncomingConnection, connection::connect::{Connect, state::NeedReply}, Associate};
+use socks5_server::{
+    auth::NoAuth, connection::state::NeedAuthenticate,
+    proto::{Address, Error, Reply},
+    Command,
+    IncomingConnection,
+    connection::connect::{Connect, state::NeedReply}};
 use once_cell::sync::OnceCell;
-use tokio::sync::Semaphore;
 use ua4f::utils;
 
+use moka::future::Cache;
+use once_cell::sync::Lazy;
 
-static USERAGENT: OnceCell<Arc<String>> = OnceCell::new();
+static USERAGENT: OnceCell<Arc<str>> = OnceCell::new();
 
-
+// 新增全局缓存，用于记录目标地址非 HTTP 的情况
+static NON_HTTP_CACHE: Lazy<Cache<String, ()>> = Lazy::new(|| {
+    Cache::builder()
+        .max_capacity(600)
+        // 这里可根据需求调整非 HTTP 缓存的有效期
+        .time_to_live(Duration::from_secs(600))
+        .build()
+});
 #[derive(Parser, Debug)]
 #[command(version, long_about = "")]
 struct Args {
@@ -24,7 +36,7 @@ struct Args {
     #[arg(short, long, default_value = "1080")]
     port: String,
 
-    #[arg(short('f'), long("user-agent"), default_value = "FFFF")]
+    #[arg(short('f'), long("user-agent"), default_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.5.1.4 Safari/537.36 Edg/114.5.1.4")]
     user_agent: String,
 
     #[arg(short('l'), long("log-level"), default_value = "info")]
@@ -50,7 +62,7 @@ async fn start_server(args: Args) {
     // 记录启动时间
     let start_time = Instant::now();
 
-    USERAGENT.set(Arc::new(args.user_agent)).ok();
+    USERAGENT.set(Arc::from(args.user_agent)).ok();
 
     // 绑定监听地址和端口
     let listener = TcpListener::bind(format!("{}:{}", args.bind, args.port))
@@ -65,28 +77,20 @@ async fn start_server(args: Args) {
     info!("UA4F started on {} cores", num_cpus::get());
     info!("Author: {}", env!("CARGO_PKG_AUTHORS"));
     info!("Version: {}", env!("CARGO_PKG_VERSION"));
+    info!("User-Agent: {}", USERAGENT.get().map(|s| &**s).unwrap_or("Unknown"));
     info!("Listening on {}:{}", args.bind, args.port);
-    let elapsed_time = start_time.elapsed();
-    info!("Server started in {}ms", elapsed_time.as_millis());
 
 
     let auth = Arc::new(NoAuth);
     let server = socks5_server::Server::new(listener, auth);
-
-    let max_concurrent_connections = 1000;
-    let semaphore = Arc::new(Semaphore::new(max_concurrent_connections));
+    let elapsed_time = start_time.elapsed();
+    info!("Server started in {}ms", elapsed_time.as_millis());
 
     loop {
-        let permit = semaphore.clone().acquire_owned().await.unwrap();
-        let connection = server.accept().await;
-        tokio::spawn(async move {
-            let _permit = permit; // 保持 permit 的生命周期
-            if let Ok((conn, _)) = connection {
-                handler(conn).await.unwrap_or_else(|err| error!("处理连接时出错: {:?}", err));
-            }
-        });
+        if let Ok((conn, _)) = server.accept().await {
+            tokio::spawn( handler(conn));
+        }
     }
-
 
 }
 
@@ -102,21 +106,20 @@ async fn handler(conn: IncomingConnection<(), NeedAuthenticate>) -> Result<(), E
 
     // 处理连接中的命令
     match conn.wait().await {
-        Ok(Command::Bind(bind, _)) => {
-            warn!("Received bind command, rejecting");
-            let replied = bind.reply(Reply::CommandNotSupported, Address::unspecified()).await;
-            if let Ok(mut conn) = replied {
-                conn.close().await?; // 关闭连接
+        Ok(command) => match command {
+            Command::Bind(bind, _) => {
+                warn!("Received bind command, rejecting");
+                if let Ok(mut conn) = bind.reply(Reply::CommandNotSupported, Address::unspecified()).await {
+                    conn.close().await?; // 关闭连接
+                }
             }
-        }
-
-        Ok(Command::Connect(connect, addr)) => {
-            handle_tcp_connect(connect, addr).await?; // 处理 TCP 连接
-        }
-
-        Ok(Command::Associate(udp_associate, addr)) => {
-            handle_udp_associate(udp_associate, addr).await?; // 处理 UDP 连接
-        }
+            Command::Connect(connect, addr) => {
+                handle_tcp_connect(connect, addr).await?; // 处理 TCP 连接
+            }
+            _ => {
+                warn!("Unsupported command received");
+            }
+        },
 
         Err((err, mut conn)) => {
             // 集中处理错误，关闭连接
@@ -124,78 +127,9 @@ async fn handler(conn: IncomingConnection<(), NeedAuthenticate>) -> Result<(), E
             return Err(err);
         }
     }
+
     Ok(())
 }
-
-async fn handle_udp_associate(
-    udp_associate: Associate<socks5_server::connection::associate::state::NeedReply>,
-    addr: Address,
-) -> Result<(), Error> {
-    let timeout = Duration::from_secs(30);
-
-    // 格式化目标地址信息
-    let address_info = match &addr {
-        Address::DomainAddress(domain, port) => format!("{}:{}", String::from_utf8_lossy(domain), port),
-        Address::SocketAddress(socket_addr) => socket_addr.to_string(),
-    };
-
-    // 创建 UDP 套接字
-    let target = match addr {
-        Address::DomainAddress(domain, _) => {
-            let domain = String::from_utf8_lossy(&domain);
-            tokio::time::timeout(timeout, UdpSocket::bind(domain.as_ref())).await
-        }
-        Address::SocketAddress(addr) => tokio::time::timeout(timeout, UdpSocket::bind(addr)).await,
-    };
-
-    let  target = match target {
-        Ok(Ok(socket)) => socket,
-        Ok(Err(err)) => {
-            warn!("无法连接到目标 {}: {}", address_info, err);
-            udp_associate
-                .reply(Reply::HostUnreachable, Address::unspecified())
-                .await
-                .ok(); // 忽略错误
-            return Err(Error::Io(err));
-        }
-        Err(_) => {
-            warn!("与目标的连接 {} 超时", address_info);
-            udp_associate
-                .reply(Reply::TtlExpired, Address::unspecified())
-                .await
-                .ok(); // 忽略错误
-            return Err(Error::Io(io::Error::new(io::ErrorKind::TimedOut, "连接超时")));
-        }
-    };
-
-    // 成功绑定后发送成功响应
-    if let Err((err, _)) = udp_associate.reply(Reply::Succeeded, Address::unspecified()).await {
-        error!("发送成功响应失败: {}", err);
-        return Err(Error::Io(err));
-    }
-
-    let mut buf = vec![0; 4096];
-
-    // 开始转发 UDP 数据
-    loop {
-        match target.recv_from(&mut buf).await {
-            Ok((n, src_addr)) => {
-                debug!("收到来自 {} 的 {} 字节数据", src_addr, n);
-
-                if let Err(err) = target.send_to(&buf[..n], src_addr).await {
-                    warn!("转发 UDP 数据失败: {}", err);
-                    return Err(Error::Io(err));
-                }
-            }
-            Err(err) => {
-                warn!("接收 UDP 数据失败: {}", err);
-                return Err(Error::Io(err));
-            }
-        }
-    }
-}
-
-
 
 async fn handle_tcp_connect(connect: Connect<NeedReply>, addr: Address) -> Result<(), Error> {
     let timeout = Duration::from_secs(30);
@@ -216,6 +150,7 @@ async fn handle_tcp_connect(connect: Connect<NeedReply>, addr: Address) -> Resul
         Address::SocketAddress(addr) => tokio::time::timeout(timeout, TcpStream::connect(addr)).await,
 
     };
+
 
     let mut target = match target {
         Ok(Ok(stream)) => stream,
@@ -249,7 +184,6 @@ async fn handle_tcp_connect(connect: Connect<NeedReply>, addr: Address) -> Resul
         }
     };
 
-
     let mut buf = vec![0; 4096];
 
     let initial_read = conn.read(&mut buf).await?;
@@ -260,10 +194,12 @@ async fn handle_tcp_connect(connect: Connect<NeedReply>, addr: Address) -> Resul
     }
 
     if http::is_http_request(&buf[..initial_read]) {
-        debug!("检测到HTTP请求");
+        debug!("检测到 HTTP 请求，进行 User-Agent 修改");
         if let Some(user_agent) = USERAGENT.get().cloned() {
             http::modify_user_agent(&mut buf, user_agent.as_ref());
         }
+    } else {
+        NON_HTTP_CACHE.insert(address_info.clone(), ()).await;
     }
 
     if let Err(err) = target.write_all(&buf[..initial_read]).await {

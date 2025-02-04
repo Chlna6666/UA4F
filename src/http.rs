@@ -1,21 +1,15 @@
 use tracing::{error, debug};
-use memchr::memmem;
+use memchr::{memmem};
 
 pub fn is_http_request(buf: &[u8]) -> bool {
-    matches!(
-        buf,
-        [b'G', b'E', b'T', ..]
-            | [b'P', b'O', b'S', b'T', ..]
-            | [b'P', b'U', b'T', ..]
-            | [b'P', b'A', b'T', b'C', b'H', ..]
-            | [b'H', b'E', b'A', b'D', ..]
-            | [b'D', b'E', b'L', b'E', b'T', b'E', ..]
-            | [b'T', b'R', b'A', b'C', b'E', ..]
-            | [b'O', b'P', b'T', b'I', b'O', b'N', b'S', ..]
-            | [b'C', b'O', b'N', b'N', b'E', b'C', b'T', ..]
-    )
+    buf.starts_with(b"GET ") ||
+        buf.starts_with(b"POST ") ||
+        buf.starts_with(b"HEAD ") ||
+        buf.starts_with(b"PUT ") ||
+        buf.starts_with(b"DELETE ") ||
+        buf.starts_with(b"OPTIONS ") ||
+        buf.starts_with(b"CONNECT ")
 }
-
 
 
 pub fn modify_user_agent(buf: &mut Vec<u8>, user_agent: &str) {
@@ -29,7 +23,7 @@ pub fn modify_user_agent(buf: &mut Vec<u8>, user_agent: &str) {
         }
     };
 
-    let end = match buf[start..].iter().position(|&b| b == b'\r') {
+    let end = match memchr::memchr(b'\r', &buf[start..]) {
         Some(pos) => start + pos,
         None => {
             error!("未找到 User-Agent 结束符");
@@ -37,32 +31,39 @@ pub fn modify_user_agent(buf: &mut Vec<u8>, user_agent: &str) {
         }
     };
 
-    if end - start > 1024 {
+    if end > buf.len() {
+        error!("User-Agent 结束符超出缓冲区范围");
+        return;
+    }
+
+    let old_len = end - start;
+    let new_len = user_agent.len();
+
+    if old_len > 1024 {
         error!("User-Agent 字段超长，无法修改");
         return;
     }
-    /*
 
     if check_is_in_whitelist(&buf[start..end]) {
         debug!("User-Agent 在白名单中，无需修改。");
         return;
     }
 
-    */
-    buf.splice(start..end, user_agent.as_bytes().iter().copied());
-    debug!(
-        "User-Agent 已修改为: {}",
-        String::from_utf8_lossy(&buf[start..start + user_agent.len()])
-    );
-}
-/*
-fn check_is_in_whitelist(buf: &[u8]) -> bool {
-    const WHITELIST: &[&[u8]] = &[
-        b"micromessenger client",
-        b"bilibili",
-    ];
+    // 使用 splice 并立即消费返回的迭代器，确保替换立即生效
+    let _ = buf.splice(start..end, user_agent.bytes()).collect::<Vec<_>>();
 
-    let lower_buf = buf.iter().map(|&b| b.to_ascii_lowercase());
-    WHITELIST.iter().any(|&item| lower_buf.clone().eq(item.iter().copied()))
+    match std::str::from_utf8(&buf[start..start + new_len]) {
+        Ok(ua) => debug!("User-Agent 已修改为: {}", ua),
+        Err(_) => error!("修改后的 User-Agent 不是有效的 UTF-8"),
+    };
 }
-*/
+
+/// **优化白名单检查**
+fn check_is_in_whitelist(buf: &[u8]) -> bool {
+    const WHITELIST: [&[u8]; 3] = [
+        b"MicroMessenger Client",
+        b"bilibili",
+        b"Go-http-client/1.1",
+    ];
+    WHITELIST.iter().any(|&item| buf.eq_ignore_ascii_case(item))
+}
