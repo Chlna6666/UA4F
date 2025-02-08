@@ -1,3 +1,4 @@
+use bytes::BytesMut;
 use tracing::{error, debug};
 use memchr::{memmem};
 
@@ -12,7 +13,7 @@ pub fn is_http_request(buf: &[u8]) -> bool {
 }
 
 
-pub fn modify_user_agent(buf: &mut Vec<u8>, user_agent: &str) {
+pub fn modify_user_agent(buf: &mut BytesMut, user_agent: &str) {
     const USER_AGENT_HEADER: &[u8] = b"User-Agent: ";
 
     let start = match memmem::find(buf, USER_AGENT_HEADER) {
@@ -49,8 +50,14 @@ pub fn modify_user_agent(buf: &mut Vec<u8>, user_agent: &str) {
         return;
     }
 
-    // 使用 splice 并立即消费返回的迭代器，确保替换立即生效
-    let _ = buf.splice(start..end, user_agent.bytes()).collect::<Vec<_>>();
+    // **修正部分**
+    let mut new_buf = BytesMut::with_capacity(buf.len() - old_len + new_len);
+    new_buf.extend_from_slice(&buf[..start]);  // 复制 User-Agent 之前的部分
+    new_buf.extend_from_slice(user_agent.as_bytes());  // 插入新的 User-Agent
+    new_buf.extend_from_slice(&buf[end..]);  // 复制 User-Agent 之后的部分
+
+    // 替换 `buf`
+    *buf = new_buf;
 
     match std::str::from_utf8(&buf[start..start + new_len]) {
         Ok(ua) => debug!("User-Agent 已修改为: {}", ua),
