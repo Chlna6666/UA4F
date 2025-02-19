@@ -69,7 +69,7 @@ pub fn modify_user_agent(buf: &mut BytesMut, user_agent: &str) {
 fn check_is_in_whitelist(buf: &[u8]) -> bool {
     const WHITELIST: [&[u8]; 3] = [
         b"MicroMessenger Client",
-        b"bilibili",
+        b"Bilibili Freedoooooom/MarkII",
         b"Go-http-client/1.1",
     ];
     WHITELIST.iter().any(|&item| buf.eq_ignore_ascii_case(item))
