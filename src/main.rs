@@ -38,7 +38,7 @@ struct Args {
     #[arg(short, long, default_value = "1080")]
     port: String,
 
-    #[arg(short('f'), long("user-agent"), default_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.5.1.4 Safari/537.36 Edg/114.5.1.")]
+    #[arg(short('f'), long("user-agent"), default_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.5.1.4 Safari/537.36")]
     user_agent: String,
 
     #[arg(short('l'), long("log-level"), default_value = "info")]
