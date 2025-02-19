@@ -50,13 +50,12 @@ jobs:
           cargo build --release --target aarch64-unknown-linux-musl
 
       - name: Building packages
-        uses: sbwml/openwrt-gh-action-sdk@main
+        uses: openwrt/gh-action-sdk@main
         env:
-          ARCH: ${{ matrix.arch }}-${{ matrix.sdk }}
+          ARCH: ${{ matrix.arch }}
 
-      - name: 上传IPK文件
+      - name: Store packages
         uses: actions/upload-artifact@v3
         with:
-          name: ua4f-ipk
-          path: build/ua4f_*.ipk
-          retention-days: 1
+          name: ${{ matrix.arch}}-packages
+          path: bin/packages/${{ matrix.arch }}/packages/*.ipk
