@@ -7,16 +7,14 @@ on:
 
 jobs:
   build:
-    name: Build ${{ matrix.arch }}-${{ matrix.sdk }}
+    name: Build ${{ matrix.arch }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         arch:
           - aarch64_cortex-a53
-        sdk:
-          - openwrt-22.03
-          - SNAPSHOT
+
 
     steps:
       - name: 检出代码
