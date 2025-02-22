@@ -33,12 +33,18 @@ pub fn modify_user_agent(buf: &mut BytesMut, user_agent: &str) {
     };
 
     if end > buf.len() {
-        error!("User-Agent 结束符超出缓冲区范围");
+        error!("User-Agent 结束符超出缓冲区范围: end={} > buf.len()={}", end, buf.len());
         return;
     }
 
     let old_len = end - start;
     let new_len = user_agent.len();
+
+    // 打印修改前的 User-Agent
+    match std::str::from_utf8(&buf[start..end]) {
+        Ok(ua) => debug!("修改前的 User-Agent: {}", ua),
+        Err(_) => error!("修改前的 User-Agent 不是有效的 UTF-8"),
+    };
 
     if old_len > 1024 {
         error!("User-Agent 字段超长，无法修改");
@@ -56,7 +62,7 @@ pub fn modify_user_agent(buf: &mut BytesMut, user_agent: &str) {
     new_buf.extend_from_slice(user_agent.as_bytes());  // 插入新的 User-Agent
     new_buf.extend_from_slice(&buf[end..]);  // 复制 User-Agent 之后的部分
 
-    // 替换 `buf`
+    // 替换 buf
     *buf = new_buf;
 
     match std::str::from_utf8(&buf[start..start + new_len]) {
@@ -65,12 +71,18 @@ pub fn modify_user_agent(buf: &mut BytesMut, user_agent: &str) {
     };
 }
 
-/// **优化白名单检查**
 fn check_is_in_whitelist(buf: &[u8]) -> bool {
-    const WHITELIST: [&[u8]; 3] = [
+    const WHITELIST: &[&[u8]] = &[
         b"MicroMessenger Client",
-        b"Bilibili Freedoooooom/MarkII",
+        b"ByteDancePcdn",
         b"Go-http-client/1.1",
+        b"Bilibili Freedoooooom/MarkII",
+        b"Client/++UE4+Release-4.26-CL-128094191 Windows/10.0.22631.1.256.64bit",
     ];
-    WHITELIST.iter().any(|&item| buf.eq_ignore_ascii_case(item))
+    for &item in WHITELIST {
+        if item.len() == buf.len() && buf.eq_ignore_ascii_case(item) {
+            return true;
+        }
+    }
+    false
 }

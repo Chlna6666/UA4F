@@ -59,7 +59,7 @@ pub fn init_logger(level: String, no_file_log: bool) {
 
     let timer = OffsetTime::new(
         local_offset,
-        format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:2]"),
+        format_description!("[month]-[day] [hour]:[minute]:[second].[subsecond digits:2]"),
     );
 
     // 控制台层

@@ -1,4 +1,4 @@
-name: 打包并上传IPK文件
+name: 构建
 
 on:
   push:
@@ -15,12 +15,9 @@ jobs:
         arch:
           - aarch64_cortex-a53
 
-
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: 安装 Rust 工具链
         uses: actions-rs/toolchain@v1
@@ -32,7 +29,7 @@ jobs:
       - name: 安装依赖项
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget xz-utils rsync build-essential musl-tools gcc-aarch64-linux-gnu          
+          sudo apt-get install -y wget xz-utils rsync build-essential musl-tools gcc-aarch64-linux-gnu   
 
       - name: 安装 musl 目标
         run: rustup target add aarch64-unknown-linux-musl
@@ -40,22 +37,19 @@ jobs:
       - name: 配置链接器
         run: |
           export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc
-          export CC=aarch64-linux-gnu-gcc          
+          export CC=aarch64-linux-gnu-gcc
 
-      - name: Rust构建
+      - name: 构建
         run: |
           export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc
           export CC=aarch64-linux-gnu-gcc
           cargo clean
           cargo build --release --target aarch64-unknown-linux-musl
 
-      - name: Building packages
-        uses: openwrt/gh-action-sdk@main
-        env:
-          ARCH: ${{ matrix.arch }}
-
-      - name: Store packages
+      - name: {{ matrix.arch }}
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.arch}}-packages
-          path: bin/packages/${{ matrix.arch }}/packages/*.ipk
+          name: ua4f
+          path: target/aarch64-unknown-linux-musl/release/ua4f
+          retention-days: 1
+          compression-level: 9

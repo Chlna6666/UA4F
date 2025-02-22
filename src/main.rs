@@ -38,7 +38,7 @@ struct Args {
     #[arg(short, long, default_value = "1080")]
     port: String,
 
-    #[arg(short('f'), long("user-agent"), default_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.5.1.4 Safari/537.36")]
+    #[arg(short('f'), long("user-agent"), default_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.5.1.4 Safari/537.36 Edg/114.5.1.4")]
     user_agent: String,
 
     #[arg(short('l'), long("log-level"), default_value = "info")]
@@ -74,6 +74,7 @@ async fn start_server(args: Args) {
             panic!("Server failed to start");
         });
 
+
     // 初始化日志
     utils::logger::init_logger(args.log_level.clone(), args.no_file_log);
     info!("UA4F started on {} cores", num_cpus::get());
@@ -106,34 +107,40 @@ async fn handler(conn: IncomingConnection<(), NeedAuthenticate>) -> Result<(), E
         }
     };
 
+    // 打印出客户端地址（连接的来源地址）
+    match conn.peer_addr() {
+        Ok(addr) => info!("来自客户端的连接，地址: {}", addr),
+        Err(e) => warn!("无法获取客户端连接地址: {}", e),
+    }
+
     // 封装错误处理，若等待命令出错，则关闭连接并返回错误
     let command = match conn.wait().await {
         Ok(cmd) => cmd,
         Err((err, mut conn)) => {
-            let _ = conn.shutdown().await;
+            let _ = conn.shutdown().await; // 尝试关闭连接
             return Err(err);
         }
     };
 
-    // 根据不同的命令类型进行处理
     match command {
         Command::Bind(bind, _) => {
-            warn!("Received bind command, rejecting");
+            warn!("收到绑定命令，拒绝处理");
             if let Ok(mut reply_conn) = bind.reply(Reply::CommandNotSupported, Address::unspecified()).await {
                 let _ = reply_conn.close().await;
             }
         }
         Command::Connect(connect, addr) => {
-            // 处理 TCP 连接请求，错误将会向上传递
+            info!("收到连接命令，尝试连接到目标地址: {}", addr);
             handle_tcp_connect(connect, addr).await?;
         }
         _ => {
-            warn!("Unsupported command received");
+            warn!("收到不支持的命令");
         }
     }
 
     Ok(())
 }
+
 
 
 pub async fn copy_bidirectional<A, B>(
@@ -309,8 +316,7 @@ async fn handle_tcp_connect(connect: Connect<NeedReply>, addr: Address) -> Resul
         buf[..n].copy_from_slice(&small_buf[..n]);
 
         // 继续读取剩余数据到 buf[n..]
-        let rest = conn.read(&mut buf[n..]).await?;
-        let initial_read = n + rest;
+        let _ = conn.read(&mut buf[n..]).await?;
 
         // 若配置了 User-Agent，则对 HTTP 请求中的 User-Agent 进行修改
         if let Some(user_agent) = USERAGENT.get().cloned() {
@@ -318,7 +324,7 @@ async fn handle_tcp_connect(connect: Connect<NeedReply>, addr: Address) -> Resul
         }
 
         // 将整个初始数据（已修改的部分）写入目标连接
-        if let Err(err) = target.write_all(&buf[..initial_read]).await {
+        if let Err(err) = target.write_all(&mut buf).await {
             conn.shutdown().await?;
             target.shutdown().await?;
             conn.flush().await?;
@@ -333,5 +339,9 @@ async fn handle_tcp_connect(connect: Connect<NeedReply>, addr: Address) -> Resul
     if let Err(e) = copy_bidirectional(&mut conn, &mut target).await {
         error!("双向复制失败: {:?}, 目标地址: {}", e, address_info);
     }
+    conn.shutdown().await?;
+    target.shutdown().await?;
+    conn.flush().await?;
+    target.flush().await?;
     Ok(())
 }
