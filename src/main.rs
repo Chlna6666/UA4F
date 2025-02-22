@@ -109,7 +109,7 @@ async fn handler(conn: IncomingConnection<(), NeedAuthenticate>) -> Result<(), E
 
     // 打印出客户端地址（连接的来源地址）
     match conn.peer_addr() {
-        Ok(addr) => info!("来自客户端的连接，地址: {}", addr),
+        Ok(addr) => debug!("来自客户端的连接，地址: {}", addr),
         Err(e) => warn!("无法获取客户端连接地址: {}", e),
     }
 
@@ -130,7 +130,7 @@ async fn handler(conn: IncomingConnection<(), NeedAuthenticate>) -> Result<(), E
             }
         }
         Command::Connect(connect, addr) => {
-            info!("收到连接命令，尝试连接到目标地址: {}", addr);
+            debug!("收到连接命令，尝试连接到目标地址: {}", addr);
             handle_tcp_connect(connect, addr).await?;
         }
         _ => {
