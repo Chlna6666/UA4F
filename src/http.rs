@@ -77,7 +77,6 @@ fn check_is_in_whitelist(buf: &[u8]) -> bool {
         b"ByteDancePcdn",
         b"Go-http-client/1.1",
         b"Bilibili Freedoooooom/MarkII",
-        b"Client/++UE4+Release-4.26-CL-128094191 Windows/10.0.22631.1.256.64bit",
     ];
     for &item in WHITELIST {
         if item.len() == buf.len() && buf.eq_ignore_ascii_case(item) {
